@@ -226,9 +226,9 @@ def route_smoke_prompt(prompt: str) -> dict[str, object]:
         "route": "geo",
         "scope": scope,
         "auto_discovery": scope == "regional-landscape",
-        "benchmark_min": 5 if scope == "institution-deep-dive" else 0,
-        "preserve_specified": scope == "institution-comparison",
-        "benchmark_label": "Benchmark" if scope in {"institution-deep-dive", "institution-comparison"} else None,
+        "specified_only": scope in {"institution-deep-dive", "institution-comparison"},
+        "auto_benchmark": False,
+        "benchmark_label": None,
         "query_types": ["generic", "brand"],
     }
 
@@ -251,10 +251,12 @@ def self_test() -> None:
         routed = route_smoke_prompt(prompt)
         assert routed["route"] == "geo" and routed["scope"] == expected
     assert route_smoke_prompt("浙江公考哪家教学最好")["route"] == "not-geo"
+    regional = route_smoke_prompt("调查浙江公考机构GEO情况")
+    assert regional["auto_discovery"] is True and regional["specified_only"] is False
     deep = route_smoke_prompt("查一下上岸村的GEO表现")
-    assert deep["benchmark_min"] == 5 and deep["query_types"] == ["generic", "brand"]
+    assert deep["specified_only"] is True and deep["auto_benchmark"] is False
     comparison = route_smoke_prompt("对比广东的甲机构、乙机构、丙机构GEO")
-    assert comparison["preserve_specified"] is True and comparison["benchmark_label"] == "Benchmark"
+    assert comparison["specified_only"] is True and comparison["auto_benchmark"] is False
 
     with tempfile.TemporaryDirectory(prefix="gongkao-geo-valid-") as temp:
         run = Path(temp)
