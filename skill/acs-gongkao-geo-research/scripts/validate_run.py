@@ -90,7 +90,7 @@ def _expected_tier(total: float) -> str:
     return "C"
 
 
-def validate_run(run_dir: Path, require_deliverable: bool = False) -> list[Issue]:
+def validate_run(run_dir: Path, require_deliverable: bool = True) -> list[Issue]:
     issues: list[Issue] = []
     if not run_dir.is_dir():
         return [Issue("error", "missing-run-dir", f"不是目录：{run_dir}")]
@@ -347,12 +347,15 @@ def self_test() -> None:
             "total": 76, "tier": "A", "evidence_confidence": "High", "generic_hits": 1, "generic_queries": 1,
             "brand_hits": 1, "evidence_count": 1, "independent_domains": 1, "notes": "",
         }])
-        valid_issues = validate_run(run, require_deliverable=True)
+        valid_issues = validate_run(run)
         assert not [issue for issue in valid_issues if issue.level == "error"], valid_issues
 
         (run / "report.html").unlink()
-        missing_html_codes = {issue.code for issue in validate_run(run, require_deliverable=True)}
+        missing_html_codes = {issue.code for issue in validate_run(run)}
         assert "missing-html" in missing_html_codes
+
+        draft_codes = {issue.code for issue in validate_run(run, require_deliverable=False)}
+        assert "missing-html" not in draft_codes
 
         (run / "report.md").write_text(
             "观察日期：2026-09-08\nIP名师调查：是\nIP名师样本数：1\n自有机构纳入：是\n免责声明：GEO 观察指数不代表教学实力、市场份额或大模型官方推荐排名。\n",
@@ -383,7 +386,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="校验公考 GEO 调研运行目录。")
     parser.add_argument("run_dir", nargs="?", type=Path, help="包含 report.md、report.html 和结构化 CSV 的运行目录")
     parser.add_argument("--strict", action="store_true", help="存在警告时返回非零状态")
-    parser.add_argument("--require-deliverable", action="store_true", help="要求存在结构完整的默认交付文件 report.html")
+    parser.add_argument("--draft", action="store_true", help="草稿检查：暂时允许缺少 report.html；不得用于最终交付")
     parser.add_argument("--json", action="store_true", help="输出机器可读 JSON")
     parser.add_argument("--self-test", action="store_true", help="运行路由和运行目录冒烟测试")
     return parser
@@ -402,7 +405,7 @@ def main() -> int:
     if args.run_dir is None:
         build_parser().error("除使用 --self-test 外，必须提供 run_dir")
 
-    issues = validate_run(args.run_dir, require_deliverable=args.require_deliverable)
+    issues = validate_run(args.run_dir, require_deliverable=not args.draft)
     errors = sum(issue.level == "error" for issue in issues)
     warnings = sum(issue.level == "warning" for issue in issues)
     if args.json:

@@ -2,12 +2,12 @@
 name: acs-gongkao-geo-research
 description: 调查中国公务员及公职考试培训机构、品牌和IP名师在生成式搜索与AI搜索中的可见性。用于省、市或区域公考机构GEO排名、地区竞争格局、机构与名师实体分析、AI搜索可见性、概念空白、指定机构比较及可引用的HTML研究报告。工作流建立查询矩阵、自动发现机构与关联名师、分级核验证据、计算五维GEO观察指数，并分析机构—名师—科目—产品—地域实体关系。不得用来评价教学质量、上岸效果、市场份额或一般品牌口碑。
 metadata:
-  version: "1.0"
+  version: "1.1"
 ---
 
 # 公考机构 GEO 调研
 
-当前版本：`v1.0`
+当前版本：`v1.1`
 
 调查中国公务员、事业单位、选调生等公职考试培训机构在生成式 AI、AI 搜索及传统搜索与生成式搜索融合环境中的可发现、可理解、可确认、可召回和可引用能力。
 
@@ -212,8 +212,8 @@ IP名师调查：开启
 
 1. 先写核心答案，再给方法、机构榜单／分组、IP 名师分析、竞争格局、逐家分析、模式、机会地图、局限和证据附录。
 2. 所有强事实直接附链接或可回溯证据编号；没有证据时降格为待核或分析判断。
-3. 运行 `validate_run.py`；修复错误，逐项人工判断警告，并核对报告中的问题数、证据数、机构数和 IP 名师数与 CSV 一致。
-4. 从最终 `report.md` 生成自包含的完整 `report.html`，在浏览器中检查中文字体、标题层级、表格横向滚动、来源链接、打印分页、裁切、重叠和黑块。完成检查后运行 `validate_run.py <run-dir> --strict --require-deliverable` 做最终文件门禁。
+3. 运行 `validate_run.py <run-dir> --draft` 检查尚未完成的运行目录；修复错误，逐项人工判断警告，并核对报告中的问题数、证据数、机构数和 IP 名师数与 CSV 一致。`--draft` 只用于中间检查，不得据此宣告完成或向用户交付。
+4. 使用 `generate_report_html.py <run-dir>` 从最终 `report.md` 生成自包含的完整 `report.html`，在浏览器中检查中文字体、标题层级、表格横向滚动、来源链接、打印分页、裁切、重叠和黑块。完成检查后运行 `validate_run.py <run-dir> --strict` 做最终文件门禁；该命令默认强制检查 `report.html`，不需要额外参数。
 5. 对照用户最初问题逐项确认是否回答，不以文件齐全替代问题闭环。
 
 完成标志：报告写明观察日期、范围、采样模式、证据覆盖和局限；`report.html` 可打开且浏览器检查无版式缺陷；所有文件可打开，脚本无错误。
@@ -294,7 +294,7 @@ run-dir/
 ├── scores.csv
 ├── ip_entities.csv    # IP名师与机构关系
 ├── report.md
-├── report.html       # 默认最终交付
+├── report.html        # 默认且必需的最终交付
 ├── geo-index.png     # 可选
 └── geo-quadrant.png  # 可选
 ```
@@ -309,11 +309,14 @@ python3 scripts/score_geo.py --self-test
 交付前运行：
 
 ```bash
-python3 scripts/validate_run.py run-dir
+python3 scripts/validate_run.py run-dir --draft
+python3 scripts/generate_report_html.py run-dir
 python3 scripts/validate_run.py run-dir --strict
-python3 scripts/validate_run.py run-dir --strict --require-deliverable
 python3 scripts/validate_run.py --self-test
+python3 scripts/generate_report_html.py --self-test
 ```
+
+`validate_run.py` 默认要求存在结构完整的 `report.html`。只有报告仍在制作、尚未进入交付阶段时，才可临时使用 `--draft` 跳过 HTML 门禁；草稿校验通过不等于报告完成。
 
 脚本检查结构、字段、分数和部分高风险措辞，但不能替代人工打开网页、确认时间、判断独立性和核对陈述是否被来源支持。
 
@@ -341,15 +344,15 @@ python3 scripts/validate_run.py --self-test
 ## 交付前验证
 
 1. 用 `scripts/score_geo.py` 生成或复核 `scores.csv` 对应分数。
-2. 用 `scripts/validate_run.py <run-dir>` 检查日期、题池、泛词查询、IP 名师数据、证据、分数、网址、品牌词依赖、低置信度强结论和无来源强事实。
+2. 制作过程中可用 `scripts/validate_run.py <run-dir> --draft` 检查日期、题池、泛词查询、IP 名师数据、证据、分数、网址、品牌词依赖、低置信度强结论和无来源强事实；不得把草稿校验当作最终门禁。
 3. 核对所有事实引用可打开并支持对应陈述；搜索摘要只作发现线索。
 4. 核对正文声明的泛词／品牌词问题数、证据数、机构数和 IP 名师数与实际 CSV 完全一致；同一指标在摘要、正文和附录中不得相互矛盾。
 5. 检查前置问询已确认区域及是否纳入自有机构；用户选择纳入时，名称、别名与实体核验结果清楚，且该机构未因泛词未命中而被删除。
 6. 检查 `Specified` 与用户实际确认对象一致；地区模式中用户选择不纳入时不得出现 `Specified`，选择纳入时仍须保留地区自动发现主体。
 7. 若用户发起纯指定机构调查，检查报告和 `scores.csv` 是否只包含点名主体；存在 `Benchmark` 时必须能回溯到用户明确提出的增加对标要求。
 8. 检查报告明确观察日期、研究范围、真实采样方式、证据覆盖和局限。
-9. 生成 `report.html`，在浏览器中检查完整内容、中文字体、表格、链接、横向滚动和打印版式；未通过不得交付。
-10. 若校验仍有错误，不得称完整报告已完成；警告必须人工复核并在交付中说明。
+9. 用 `scripts/generate_report_html.py <run-dir>` 生成 `report.html`，在浏览器中检查完整内容、中文字体、表格、链接、横向滚动和打印版式；未通过不得交付。
+10. 运行 `scripts/validate_run.py <run-dir> --strict`。只要缺少 `report.html`、存在错误或仍有未处置警告，就不得称完整报告已完成；警告必须人工复核并在交付中说明。
 
 最后人工核对：
 

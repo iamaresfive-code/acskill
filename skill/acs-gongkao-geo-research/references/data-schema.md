@@ -110,13 +110,14 @@ IP名师样本数：N
 
 - `python3 scripts/score_geo.py scores-input.json --pretty`
 - `python3 scripts/score_geo.py --self-test`
-- `python3 scripts/validate_run.py run-dir`
+- `python3 scripts/validate_run.py run-dir --draft`（仅制作过程）
+- `python3 scripts/generate_report_html.py run-dir`
 - `python3 scripts/validate_run.py run-dir --strict`
-- `python3 scripts/validate_run.py run-dir --strict --require-deliverable`
 - `python3 scripts/validate_run.py --self-test`
+- `python3 scripts/generate_report_html.py --self-test`
 
-校验通过只表示结构和主要逻辑约束通过，不能替代人工打开来源、确认来源支持陈述、核验时间窗口和复查对标合理性。
+`validate_run.py` 默认要求存在结构完整的 `report.html`；只有制作过程可用 `--draft` 暂时跳过 HTML 门禁，草稿校验不得作为完成或交付依据。校验通过只表示结构和主要逻辑约束通过，不能替代人工打开来源、确认来源支持陈述、核验时间窗口和复查对标合理性。
 
 ## HTML 交付
 
-`report.html` 必须从最终 `report.md` 生成，包含完整正文和必要样式，并在交付前用浏览器检查。至少核对中文字体、标题层级、宽表格横向滚动、来源链接、打印分页、裁切、重叠和黑块。Markdown 或 CSV 不能代替默认 HTML 最终交付。
+`report.html` 必须使用 `generate_report_html.py` 从最终 `report.md` 生成，包含完整正文和必要样式，并在交付前用浏览器检查。至少核对中文字体、标题层级、宽表格横向滚动、来源链接、打印分页、裁切、重叠和黑块。Markdown 或 CSV 不能代替默认 HTML 最终交付。
