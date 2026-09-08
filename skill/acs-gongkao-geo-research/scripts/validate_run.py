@@ -32,6 +32,7 @@ REQUIRED_SCORE = {
     "generic_hits", "generic_queries", "brand_hits", "evidence_count",
     "independent_domains", "notes",
 }
+ALLOWED_ROLES = {"candidate", "specified", "benchmark"}
 DATE_RE = re.compile(r"(?:观察日期|observation_date)\s*[：:]\s*\d{4}-\d{2}-\d{2}", re.I)
 DISCLAIMER_TERMS = ("不代表教学实力", "不等于教学实力", "不是教学实力")
 DETERMINISTIC_TERMS = ("毫无疑问", "必然", "绝对", "稳居第一", "领先所有", "最佳", "唯一首选")
@@ -79,7 +80,7 @@ def _expected_tier(total: float) -> str:
     return "C"
 
 
-def validate_run(run_dir: Path) -> list[Issue]:
+def validate_run(run_dir: Path, require_pdf: bool = False) -> list[Issue]:
     issues: list[Issue] = []
     if not run_dir.is_dir():
         return [Issue("error", "missing-run-dir", f"not a directory: {run_dir}")]
@@ -98,6 +99,19 @@ def validate_run(run_dir: Path) -> list[Issue]:
         issues.append(Issue("error", "missing-observation-date", "report.md has no YYYY-MM-DD observation date"))
     if report and not any(term in report for term in DISCLAIMER_TERMS):
         issues.append(Issue("error", "missing-disclaimer", "report must state that GEO is not teaching quality"))
+
+    if require_pdf:
+        pdf_path = run_dir / "report.pdf"
+        if not pdf_path.is_file():
+            issues.append(Issue("error", "missing-pdf", "missing required final deliverable: report.pdf"))
+        else:
+            try:
+                pdf_data = pdf_path.read_bytes()
+            except OSError as exc:
+                issues.append(Issue("error", "read-pdf", f"cannot read report.pdf: {exc}"))
+            else:
+                if not pdf_data.startswith(b"%PDF-") or b"%%EOF" not in pdf_data[-1024:]:
+                    issues.append(Issue("error", "invalid-pdf", "report.pdf has no valid PDF header or EOF marker"))
 
     queries, query_fields = _read_csv(run_dir / "queries.csv", issues, "queries")
     required_query_fields = {"query_id", "query_text", "query_type", "theme", "region", "city", "exam", "sampled_channel", "sampled_at", "notes"}
@@ -156,6 +170,9 @@ def validate_run(run_dir: Path) -> list[Issue]:
         if confidence not in {"high", "medium", "low"}:
             issues.append(Issue("error", "invalid-confidence", f"scores.csv line {line_no} has invalid evidence_confidence"))
         has_low_confidence = has_low_confidence or confidence == "low"
+        role = row.get("role", "").strip().lower()
+        if role not in ALLOWED_ROLES:
+            issues.append(Issue("error", "invalid-role", f"scores.csv line {line_no} role must be Candidate, Specified, or Benchmark"))
 
         values: dict[str, float] = {}
         for field, maximum in WEIGHTS.items():
@@ -245,6 +262,7 @@ def self_test() -> None:
             "观察日期：2026-09-08\n免责声明：GEO 观察指数不代表教学实力、市场份额或大模型官方推荐排名。\n",
             encoding="utf-8",
         )
+        (run / "report.pdf").write_bytes(b"%PDF-1.4\n%%EOF\n")
         query_fields = ["query_id", "query_text", "query_type", "theme", "region", "city", "exam", "sampled_channel", "sampled_at", "notes"]
         _write_csv(run / "queries.csv", query_fields, [
             {"query_id": "Q1", "query_text": "浙江公考培训机构有哪些", "query_type": "generic", "theme": "发现", "region": "浙江", "city": "", "exam": "省考", "sampled_channel": "public-web", "sampled_at": "2026-09-08T10:00:00+08:00", "notes": ""},
@@ -264,27 +282,32 @@ def self_test() -> None:
             "total": 76, "tier": "A", "evidence_confidence": "High", "generic_hits": 1, "generic_queries": 1,
             "brand_hits": 1, "evidence_count": 1, "independent_domains": 1, "notes": "",
         }])
-        valid_issues = validate_run(run)
+        valid_issues = validate_run(run, require_pdf=True)
         assert not [issue for issue in valid_issues if issue.level == "error"], valid_issues
+
+        (run / "report.pdf").unlink()
+        missing_pdf_codes = {issue.code for issue in validate_run(run, require_pdf=True)}
+        assert "missing-pdf" in missing_pdf_codes
 
         # Deliberately violate independent requirements to prove detection.
         _write_csv(run / "queries.csv", query_fields, [
             {"query_id": "Q2", "query_text": "示例机构是什么", "query_type": "brand", "theme": "实体", "region": "浙江", "city": "", "exam": "省考", "sampled_channel": "public-web", "sampled_at": "2026-09-08T10:01:00+08:00", "notes": ""},
         ])
         _write_csv(run / "scores.csv", score_fields, [{
-            "institution": "无证据机构", "role": "Specified", "query_coverage": 25, "entity_clarity": 20,
+            "institution": "无证据机构", "role": "Unknown", "query_coverage": 25, "entity_clarity": 20,
             "external_diversity": 13, "concept_ownership": 11, "freshness": 8,
             "total": 77, "tier": "A", "evidence_confidence": "Low", "generic_hits": 0, "generic_queries": 0,
             "brand_hits": 1, "evidence_count": 1, "independent_domains": 1, "notes": "",
         }])
         invalid_codes = {issue.code for issue in validate_run(run)}
-        assert {"no-generic-query", "score-without-evidence", "brand-only-high-coverage"} <= invalid_codes
+        assert {"no-generic-query", "score-without-evidence", "brand-only-high-coverage", "invalid-role"} <= invalid_codes
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Validate a gongkao GEO research run directory.")
     parser.add_argument("run_dir", nargs="?", type=Path, help="directory containing report.md and the three CSV files")
     parser.add_argument("--strict", action="store_true", help="return nonzero when warnings are present")
+    parser.add_argument("--require-pdf", action="store_true", help="require report.pdf and check basic PDF file markers")
     parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     parser.add_argument("--self-test", action="store_true", help="run routing and run-directory smoke tests")
     return parser
@@ -303,7 +326,7 @@ def main() -> int:
     if args.run_dir is None:
         build_parser().error("run_dir is required unless --self-test is used")
 
-    issues = validate_run(args.run_dir)
+    issues = validate_run(args.run_dir, require_pdf=args.require_pdf)
     errors = sum(issue.level == "error" for issue in issues)
     warnings = sum(issue.level == "warning" for issue in issues)
     if args.json:

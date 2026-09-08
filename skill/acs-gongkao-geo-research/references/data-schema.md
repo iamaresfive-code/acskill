@@ -9,7 +9,8 @@ run-dir/
 ├── queries.csv          # 必需：本次实际题池与采样记录
 ├── evidence.csv         # 必需：逐条证据
 ├── scores.csv           # 必需：逐机构五维评分
-├── report.md            # 必需：正式报告
+├── report.md            # 必需：可追溯的正式报告源文件
+├── report.pdf           # 必需：默认最终交付件
 ├── report.docx          # 可选：用户要求 Word 时生成
 ├── geo-index.png        # 可选：GEO 指数图
 └── geo-quadrant.png     # 可选：实体可核验性 × 泛词覆盖象限图
@@ -61,7 +62,8 @@ CSV 中 `concepts` 使用 JSON 数组字符串，例如 `["本地考情","基地
 institution,role,query_coverage,entity_clarity,external_diversity,concept_ownership,freshness,total,tier,evidence_confidence,generic_hits,generic_queries,brand_hits,evidence_count,independent_domains,notes
 ```
 
-- `role`：`Candidate`、`Specified` 或 `Benchmark`。
+- `role`：`Candidate`、`Specified` 或 `Benchmark`，仅表示样本进入方式：查询发现、用户指定或补充对标。它不是机构等级，也不得影响评分。
+- `role` 保留在结构化数据中供复核；最终报告主排名表默认不显示。确需说明时使用中文列名“入选方式”，并映射为“调研发现 / 用户指定 / 对标补充”。
 - 五维上限依次为 30、25、20、15、10；`total` 必须是五项之和。
 - `tier`：S、A+、A、A-、B+、B、B-、C。
 - `evidence_confidence`：High、Medium、Low。
@@ -88,6 +90,11 @@ institution,role,query_coverage,entity_clarity,external_diversity,concept_owners
 - `python3 scripts/score_geo.py --self-test`
 - `python3 scripts/validate_run.py run-dir`
 - `python3 scripts/validate_run.py run-dir --strict`
+- `python3 scripts/validate_run.py run-dir --strict --require-pdf`
 - `python3 scripts/validate_run.py --self-test`
 
 校验通过只表示结构和主要逻辑约束通过，不能替代人工打开来源、确认来源支持陈述、核验时间窗口和复查对标合理性。
+
+## PDF 交付
+
+`report.pdf` 必须从最终 `report.md` 生成，并在交付前渲染全部页面检查。至少核对中文字体、表格分页、标题层级、链接、页码、裁切、重叠和黑块。HTML 或 Markdown 不能代替默认 PDF 最终交付；若 PDF 工具不可用，应明确报告阻塞。

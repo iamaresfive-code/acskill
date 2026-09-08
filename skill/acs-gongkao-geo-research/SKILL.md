@@ -28,7 +28,7 @@ description: Research current GEO and AI-search visibility of Chinese civil-serv
 
 | 模式 | 何时使用 | 必须完成的核心工作 |
 | --- | --- | --- |
-| `regional-landscape` | 用户只给地区，或询问当地整体格局 | 地区考试生态、Generic Query 题池、10—20 个候选主体、分层竞争格局 |
+| `regional-landscape` | 用户只给地区，或询问当地整体格局 | 自动调查整个地区的公考机构生态，建立 Generic Query 题池，发现 10—20 个候选主体；主报告列出并分析证据充分、排名靠前的机构，其余进入附录或待观察组 |
 | `institution-deep-dive` | 用户指定一个机构、品牌或老师/IP | 保留指定主体，补 5—8 家合理对标，完成实体图谱、泛词表现、外部验证和空白分析 |
 | `institution-comparison` | 用户指定两个及以上主体进行比较 | 保留全部指定主体；新增主体只作 `Benchmark`，统一题池、窗口和评分口径 |
 | `gap-analysis` | 用户询问空白词、机会问题或概念占位 | 从无结果、弱结果、实体歧义和概念归属不稳的真实查询生成 A/B/C Gap Map |
@@ -50,10 +50,10 @@ description: Research current GEO and AI-search visibility of Chinese civil-serv
 | --- | --- | --- |
 | `region` | 省、城市、都市圈或跨区域范围 | 缺失但机构地域明确时先从可靠来源核验；无法确定且会改变题池时询问用户 |
 | `cities` | 核心城市、地级市或独立招录城市 | 省域任务根据当地考试生态选择，不默认只看省会 |
-| `institution_names` | 机构、品牌、老师/IP，可为零个、一个或多个 | 零个则自动发现；指定主体无论证据强弱都保留 |
+| `institution_names` | 机构、品牌、老师/IP，可为零个、一个或多个 | 只认用户当前请求中明确点名的主体。零个则调查整个地区并自动发现；指定主体无论证据强弱都保留 |
 | `research_scope` | 四种研究模式之一 | 未指定时按上表自动判断 |
 | `query_depth` | `quick`、`standard`、`deep`、`full` | 默认 `standard=20`；依次对应约 10、20、50、100 个实际采样问题 |
-| `output_format` | 对话摘要、Markdown、完整运行目录、Word、图表 | 默认先交付有引用的 Markdown/对话报告；用户明确要求才生成 Word |
+| `output_format` | PDF、完整运行目录、Markdown、Word、图表 | 默认生成并直接交付 `report.pdf`；Markdown 与 CSV 作为可追溯工作文件保留。只有用户明确要求纯对话摘要时才不生成 PDF；用户明确要求时再额外生成 Word |
 | `observation_date` | 实际采样日期 | 必须使用本次调查日期，不使用 Skill 创建日期或旧报告日期 |
 
 用户说“深度”“完整”“详细”时至少使用 `deep`；明确说“100 个问题”或“全量题池”时使用 `full`。用户指定问题数时以用户数量为准，同时保持五组问题的合理覆盖。
@@ -77,10 +77,15 @@ description: Research current GEO and AI-search visibility of Chinese civil-serv
 ### 地区和候选主体规则
 
 - 只有地区时，先识别当地主要城市、独立招录体系、主要考试及真实笔面试生态，再地区化题池；不得把某省专属词机械复制到其他省份。
-- 未给机构名单时，用 Generic Queries 发现 10—20 个有证据的主体，覆盖全国品牌、本土综合机构、细分机构、老师/IP 型品牌和近期新主体。
+- 未给机构名单时，固定使用 `regional-landscape`：以整个目标地区为调查对象，用 Generic Queries 自动发现 10—20 个有证据的主体，覆盖全国品牌、本土综合机构、细分机构、老师/IP 型品牌和近期新主体；完成评分后，在主报告列出并重点分析排名靠前且证据达到可解释门槛的 5—10 家。
+- 地区模式下不得因为委托方身份、用户画像、历史对话、记忆或研究者偏好，擅自加入某个机构、老师/IP 或所谓“自有主体”。用户当前请求未点名机构时，`Specified` 必须为零。
+- 用户明确点名一个或多个机构时，才把这些主体记为 `Specified`；同时按相同题池调查地区领先机构。点名主体不得因分数低而删除，自动补充的对照主体不得伪装成用户指定。
+- 主报告聚焦领先机构及其差异、证据、模式与优化机会；未达到证据门槛的主体不凑精确排名，统一进入“待观察”附录并说明缺口。
 - 证据弱者标为“证据不足 / 待观察”，不为凑数量建立精确分数。
 - 单机构研究自动增加 5—8 家合理对标；多机构比较保留全部指定机构，可增加 2—5 家，新增者必须标记 `Benchmark` 并解释选择理由。
 - 名称相近、品牌与公司主体不一致、老师/IP 与机构关系不明时，先建立别名和待核关系，不提前合并实体。
+- `Candidate`、`Specified`、`Benchmark` 只表示样本如何进入调研：分别为查询发现、用户指定、研究者补充对标；它们不是机构等级、经营身份或优劣判断，也不得影响评分。
+- `role` 保留在 `scores.csv` 供审计。最终报告主排名表默认不展示原始英文 `role`；确有解释需要时，在方法或附录使用“入选方式”，并映射为“调研发现 / 用户指定 / 对标补充”。
 
 ## 按需读取参考文件
 
@@ -88,7 +93,7 @@ description: Research current GEO and AI-search visibility of Chinese civil-serv
 - 生成地区化查询矩阵时读 [public-exam-query-bank.md](references/public-exam-query-bank.md)。
 - 搜索、取证、分级、去重和引用时读 [source-policy.md](references/source-policy.md)。
 - 建立中间数据或运行校验时读 [data-schema.md](references/data-schema.md)。
-- 输出完整报告、Word 或图表时读 [report-template.md](references/report-template.md)。
+- 输出完整报告、PDF、Word 或图表时读 [report-template.md](references/report-template.md)。
 
 不要一次性加载全部 references。普通地区概览通常读取题库、来源政策与方法论；只有需要落结构化文件、运行脚本或生成正式报告时，再读取数据规范和报告模板。
 
@@ -134,6 +139,8 @@ description: Research current GEO and AI-search visibility of Chinese civil-serv
 
 完成标志：`queries.csv` 或等价题池记录完整，至少存在一个 Generic Query，候选池的发现依据可追溯。
 
+地区模式的额外完成标志：候选池来自地区泛词调查；主报告的领先机构由同一题池、窗口和评分口径产生；若用户未点名主体，数据中不存在 `Specified`。
+
 ### 阶段三：搜索、开源与证据入账（步骤 6—10）
 
 1. 搜索结果页和 AI 摘要只用于发现线索；重要事实必须打开原始页面核验。
@@ -170,10 +177,11 @@ description: Research current GEO and AI-search visibility of Chinese civil-serv
 
 1. 先写核心答案，再给方法、榜单/分组、竞争格局、逐家分析、模式、Gap Map、局限和证据附录。
 2. 所有强事实直接附链接或可回溯证据编号；没有证据时降格为待核或分析判断。
-3. 运行 `validate_run.py`；修复 error，逐项人工判断 warning。
-4. 对照用户最初问题逐项确认是否回答，不以文件齐全替代问题闭环。
+3. 运行 `validate_run.py`；修复 error，逐项人工判断 warning，并核对报告中的问题数、证据数和机构数与 CSV 一致。
+4. 使用可用的 PDF Skill/工具从最终 `report.md` 生成 `report.pdf`；渲染全部页面逐页检查中文字体、标题层级、表格分页、链接、页码、裁切、重叠和黑块。PDF 工具不可用时明确报告阻塞，不得静默改交 HTML 或 Markdown。完成视觉检查后运行 `validate_run.py <run-dir> --strict --require-pdf` 做最终文件门禁。
+5. 对照用户最初问题逐项确认是否回答，不以文件齐全替代问题闭环。
 
-完成标志：报告写明观察日期、范围、采样模式、证据覆盖和局限；所有文件可打开，脚本无 error。
+完成标志：报告写明观察日期、范围、采样模式、证据覆盖和局限；`report.pdf` 可打开且最新一轮页面渲染无版式缺陷；所有文件可打开，脚本无 error。
 
 Generic Query 与 Brand Query 必须分开。泛问题召回主要计入 Query Coverage；品牌词只用于确认官网、老师、课程、校区、专业领域和第三方关系，不能替代泛词占位证据。
 
@@ -206,9 +214,10 @@ Own Media（自有媒体）与 Earned Media（外部自然获得的引用）分�
 - 每家机构同时给 `Evidence Confidence: High|Medium|Low`。低置信度或 60 分以下机构之间，不解释 1—2 分或一两个名次的细微差异。
 - GEO 模式可多选：品牌权重型、Query 铺量型、实体知识图谱型、Expert/IP 型、地域实体型、主动 GEO 铺量型；允许按证据新增，不强迫单一归类。
 - Gap Map 必须从实际查询结果提炼 Concept Ownership Opportunity，按 A 优先抢占、B 可系统布局、C 红海分层；不是普通 SEO 关键词堆砌。
-- 深度研究尽可能保留 `queries.csv`、`evidence.csv`、`scores.csv`、`report.md`；可选图表和 `report.docx`。输出字段与目录见数据结构参考。
+- 深度研究保留 `queries.csv`、`evidence.csv`、`scores.csv`、`report.md` 和最终交付的 `report.pdf`；可选图表和 `report.docx`。输出字段与目录见数据结构参考。
 - 图表仅在数据质量足够时生成，数据必须来自实际评分：GEO 指数横向柱状图、Entity Verifiability × Query Coverage 象限图。
-- 用户要求 Word 时使用可用的文档 Skill/工具生成可编辑 `.docx`，并完成渲染与版面验证。
+- PDF 是默认最终交付件；最终回复直接提供 `report.pdf`，不让用户自行把 Markdown 或 HTML 转换为 PDF。
+- 用户要求 Word 时，再使用可用的文档 Skill/工具额外生成可编辑 `.docx`，并完成渲染与版面验证。
 - 默认不把研究产物写入任何外部知识库；用户明确要求归档时，遵守目标工作区的 `AGENTS.md`、授权边界和写入规范。
 
 ### 五维分数回答什么
@@ -233,10 +242,10 @@ Own Media（自有媒体）与 Earned Media（外部自然获得的引用）分�
 
 ### 交付层级
 
-- `quick`：约 10 个问题，输出范围、代表性发现、证据边界、初步机构组别和下一步；不得伪装成完整榜单。
-- `standard`：约 20 个问题，完成标准地区/机构报告、五维评分和证据附录。
-- `deep`：约 50 个问题，保留完整运行目录，强化实体图谱、独立来源、逐家分析与 Gap Map。
-- `full`：约 100 个问题，覆盖更多城市、考试和决策场景；必须控制同一观察窗口和去重口径。
+- `quick`：约 10 个问题，输出范围、代表性发现、证据边界、初步机构组别和下一步；不得伪装成完整榜单，最终仍生成简版 PDF，除非用户明确只要对话摘要。
+- `standard`：约 20 个问题；只给地区时完成整个地区的机构发现、统一评分、领先机构重点分析、竞争格局和证据附录，最终生成 PDF。
+- `deep`：约 50 个问题，保留完整运行目录，强化实体图谱、独立来源、逐家分析与 Gap Map，最终生成 PDF。
+- `full`：约 100 个问题，覆盖更多城市、考试和决策场景；必须控制同一观察窗口和去重口径，最终生成 PDF。
 
 无论深度如何，都要明确实际执行的问题数、成功打开的来源数、独立域名数、证据不足的主体数和无法核验的关键事项。
 
@@ -250,6 +259,7 @@ run-dir/
 ├── evidence.csv
 ├── scores.csv
 ├── report.md
+├── report.pdf        # 默认最终交付
 ├── report.docx       # 可选
 ├── geo-index.png     # 可选
 └── geo-quadrant.png  # 可选
@@ -267,6 +277,7 @@ python3 scripts/score_geo.py --self-test
 ```bash
 python3 scripts/validate_run.py run-dir
 python3 scripts/validate_run.py run-dir --strict
+python3 scripts/validate_run.py run-dir --strict --require-pdf
 python3 scripts/validate_run.py --self-test
 ```
 
@@ -284,25 +295,36 @@ python3 scripts/validate_run.py --self-test
 - 不因全国品牌规模大而预设其在某地区或某类 Query 中领先。
 - 不把单次观察外推为长期稳定结论；跨期比较必须说明题池、渠道和方法是否一致。
 - 不把 Benchmark 混入用户指定机构后伪装成用户原始比较对象。
+- 不根据用户身份、历史对话、记忆或委托关系自动加入机构或老师/IP；只有当前请求明确点名时才使用 `Specified`。
+- 不把 `Candidate`、`Specified`、`Benchmark` 当作排名或质量标签；不在面向用户的主排名表中直接展示这些英文内部值。
 - 不在未实际访问某个生成式搜索引擎时填写该引擎名称、推荐率或回答结果。
+- 不以 HTML、Markdown 或“请用户自行导出”替代默认 PDF 最终交付。
 
 ## 交付前验证
 
 1. 用 `scripts/score_geo.py` 生成或复核 `scores.csv` 对应分数。
 2. 用 `scripts/validate_run.py <run-dir>` 检查日期、题池、Generic Query、证据、分数、URL、品牌词依赖、低置信度强结论和无来源强事实。
 3. 核对所有事实引用可打开并支持对应陈述；搜索摘要只作发现线索。
-4. 检查报告明确观察日期、研究范围、真实采样方式、证据覆盖和局限。
-5. 若校验仍有 error，不得称完整报告已完成；warning 必须人工复核并在交付中说明。
+4. 核对正文声明的问题数、Generic/Brand 数、证据数、机构数与实际 CSV 完全一致；同一指标在摘要、正文和附录中不得相互矛盾。
+5. 检查 `Specified` 与用户实际点名对象一致；若范围说明为“零指定主体”，`scores.csv` 不得出现 `Specified`。
+6. 检查报告明确观察日期、研究范围、真实采样方式、证据覆盖和局限。
+7. 生成 `report.pdf`，渲染全部页面并完成视觉检查；未通过不得交付。
+8. 若校验仍有 error，不得称完整报告已完成；warning 必须人工复核并在交付中说明。
 
 最后人工核对：
 
 - 用户指定的地区和机构是否全部保留；
+- 用户只给地区时，是否完成整个地区的机构自动发现，并只对排名靠前且证据充分的机构做重点分析；
+- 是否错误地根据用户身份、历史上下文或委托关系加入了未点名主体；
 - Generic 与 Brand Query 是否分开统计；
 - 对标机构是否明确标记 `Benchmark`；
+- 主排名表是否已隐藏内部英文 `role`，如需说明是否使用中文“入选方式”；
 - 每个评分机构是否至少有一条可打开的证据；
 - Own/Earned、事实/自述/代理指标/推断是否分开；
 - 榜单、图表和正文使用的分数是否来自同一份 `scores.csv`；
 - Gap Map 是否来自实际查询缺口，而不是普通 SEO 词表；
 - 报告是否明确写出观察日期、采样模式、证据置信度和 GEO 免责声明；
+- 报告内各处样本数是否与 `queries.csv`、`evidence.csv`、`scores.csv` 一致；
+- 最终是否直接交付经过逐页渲染检查的 `report.pdf`；
 - 用户要求 Word 时，是否生成可编辑文档并完成渲染检查；
 - 若只是对话摘要，是否仍提供足够链接让关键结论可复核。
