@@ -34,6 +34,8 @@ REQUIRED_SCORE = {
 }
 ALLOWED_ROLES = {"candidate", "specified", "benchmark"}
 DATE_RE = re.compile(r"(?:观察日期|observation_date)\s*[：:]\s*\d{4}-\d{2}-\d{2}", re.I)
+OWNED_INCLUDE_RE = re.compile(r"(?:自有机构纳入|include_owned_institution)\s*[：:]\s*(是|否|yes|no)\b", re.I)
+OWNED_NAME_RE = re.compile(r"(?:自有机构名称|owned_institution_names?)\s*[：:]\s*(\S.+)", re.I)
 DISCLAIMER_TERMS = ("不代表教学实力", "不等于教学实力", "不是教学实力")
 DETERMINISTIC_TERMS = ("毫无疑问", "必然", "绝对", "稳居第一", "领先所有", "最佳", "唯一首选")
 STRONG_FACT_RE = re.compile(r"(?:上岸率|市场份额|排名第一|第\s*1\s*名|\d+(?:\.\d+)?%)")
@@ -99,6 +101,11 @@ def validate_run(run_dir: Path, require_pdf: bool = False) -> list[Issue]:
         issues.append(Issue("error", "missing-observation-date", "report.md has no YYYY-MM-DD observation date"))
     if report and not any(term in report for term in DISCLAIMER_TERMS):
         issues.append(Issue("error", "missing-disclaimer", "report must state that GEO is not teaching quality"))
+    owned_include = OWNED_INCLUDE_RE.search(report) if report else None
+    if report and not owned_include:
+        issues.append(Issue("error", "missing-owned-institution-decision", "report must record 自有机构纳入：是/否"))
+    elif owned_include and owned_include.group(1).lower() in {"是", "yes"} and not OWNED_NAME_RE.search(report):
+        issues.append(Issue("error", "missing-owned-institution-name", "report includes the user's institution but has no 自有机构名称"))
 
     if require_pdf:
         pdf_path = run_dir / "report.pdf"
@@ -227,6 +234,9 @@ def route_smoke_prompt(prompt: str) -> dict[str, object]:
         "scope": scope,
         "auto_discovery": scope == "regional-landscape",
         "specified_only": scope in {"institution-deep-dive", "institution-comparison"},
+        "ask_region": True,
+        "ask_include_owned_institution": scope == "regional-landscape",
+        "allow_forced_owned_institution": scope == "regional-landscape",
         "auto_benchmark": False,
         "benchmark_label": None,
         "query_types": ["generic", "brand"],
@@ -253,6 +263,8 @@ def self_test() -> None:
     assert route_smoke_prompt("浙江公考哪家教学最好")["route"] == "not-geo"
     regional = route_smoke_prompt("调查浙江公考机构GEO情况")
     assert regional["auto_discovery"] is True and regional["specified_only"] is False
+    assert regional["ask_region"] is True and regional["ask_include_owned_institution"] is True
+    assert regional["allow_forced_owned_institution"] is True
     deep = route_smoke_prompt("查一下上岸村的GEO表现")
     assert deep["specified_only"] is True and deep["auto_benchmark"] is False
     comparison = route_smoke_prompt("对比广东的甲机构、乙机构、丙机构GEO")
@@ -261,7 +273,7 @@ def self_test() -> None:
     with tempfile.TemporaryDirectory(prefix="gongkao-geo-valid-") as temp:
         run = Path(temp)
         (run / "report.md").write_text(
-            "观察日期：2026-09-08\n免责声明：GEO 观察指数不代表教学实力、市场份额或大模型官方推荐排名。\n",
+            "观察日期：2026-09-08\n自有机构纳入：否\n免责声明：GEO 观察指数不代表教学实力、市场份额或大模型官方推荐排名。\n",
             encoding="utf-8",
         )
         (run / "report.pdf").write_bytes(b"%PDF-1.4\n%%EOF\n")
@@ -290,6 +302,17 @@ def self_test() -> None:
         (run / "report.pdf").unlink()
         missing_pdf_codes = {issue.code for issue in validate_run(run, require_pdf=True)}
         assert "missing-pdf" in missing_pdf_codes
+
+        (run / "report.md").write_text(
+            "观察日期：2026-09-08\n自有机构纳入：是\n免责声明：GEO 观察指数不代表教学实力、市场份额或大模型官方推荐排名。\n",
+            encoding="utf-8",
+        )
+        missing_owned_name_codes = {issue.code for issue in validate_run(run)}
+        assert "missing-owned-institution-name" in missing_owned_name_codes
+        (run / "report.md").write_text(
+            "观察日期：2026-09-08\n自有机构纳入：否\n免责声明：GEO 观察指数不代表教学实力、市场份额或大模型官方推荐排名。\n",
+            encoding="utf-8",
+        )
 
         # Deliberately violate independent requirements to prove detection.
         _write_csv(run / "queries.csv", query_fields, [

@@ -62,13 +62,14 @@ CSV 中 `concepts` 使用 JSON 数组字符串，例如 `["本地考情","基地
 institution,role,query_coverage,entity_clarity,external_diversity,concept_ownership,freshness,total,tier,evidence_confidence,generic_hits,generic_queries,brand_hits,evidence_count,independent_domains,notes
 ```
 
-- `role`：`Candidate`、`Specified` 或 `Benchmark`，仅表示样本进入方式：查询发现、用户指定或补充对标。它不是机构等级，也不得影响评分。
+- `role`：`Candidate`、`Specified` 或 `Benchmark`，仅表示样本进入方式：地区查询发现、用户明确要求强制纳入/单独指定，或用户明确要求后补充对标。它不是机构等级，也不得影响评分。
 - `role` 保留在结构化数据中供复核；最终报告主排名表默认不显示。确需说明时使用中文列名“入选方式”，并映射为“调研发现 / 用户指定 / 对标补充”。
 - 五维上限依次为 30、25、20、15、10；`total` 必须是五项之和。
 - `tier`：S、A+、A、A-、B+、B、B-、C。
 - `evidence_confidence`：High、Medium、Low。
 - `generic_hits` 不得大于 `generic_queries`；Query Coverage 高分必须由 Generic Query 证据支持。
 - 没有足够证据的主体可以记录为 `Evidence insufficient`，但不要伪造精确分。
+- 地区调查中用户要求纳入的自有机构必须使用 `Specified` 并保留，即使 `generic_hits=0`；不得把 Brand Query 命中改算为 Generic 命中。
 
 ## report.md 的机器可检字段
 
@@ -78,11 +79,15 @@ institution,role,query_coverage,entity_clarity,external_diversity,concept_owners
 观察日期：YYYY-MM-DD
 研究范围：...
 采样模式：public-web-proxy | multi-engine sampling
+自有机构纳入：是 | 否
+自有机构名称：...  # 选择“是”时必填
 证据置信度：High | Medium | Low
 免责声明：GEO 观察指数不代表教学实力、市场份额或大模型官方推荐排名。
 ```
 
 每个重要事实在同段附来源链接，或使用能回溯到 `evidence.csv` 的脚注/证据编号。强结论必须有证据等级和置信度支撑。
+
+`自有机构纳入`是前置问询的审计字段。选择“否”时不得凭历史信息加入`Specified`；选择“是”时必须记录准确名称，并在`scores.csv`中保留对应`Specified`主体。
 
 ## 脚本接口
 
