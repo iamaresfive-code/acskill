@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Calculate the fixed five-dimension gongkao GEO score and tier."""
+"""计算固定五维公考 GEO 分数与等级。"""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ WEIGHTS = {
 
 
 class ScoreError(ValueError):
-    """Raised when score input is invalid."""
+    """评分输入无效时抛出。"""
 
 
 def tier_for(total: float) -> str:
@@ -44,24 +44,24 @@ def tier_for(total: float) -> str:
 
 def _number(value: Any, field: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ScoreError(f"{field} must be a number, not {type(value).__name__}")
+        raise ScoreError(f"{field} 必须是数字，不能是 {type(value).__name__}")
     value = float(value)
     if not math.isfinite(value):
-        raise ScoreError(f"{field} must be finite")
+        raise ScoreError(f"{field} 必须是有限数值")
     return value
 
 
 def score_record(record: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(record, dict):
-        raise ScoreError("each score record must be a JSON object")
+        raise ScoreError("每条评分记录必须是 JSON 对象")
 
     normalized: dict[str, float] = {}
     for field, maximum in WEIGHTS.items():
         if field not in record:
-            raise ScoreError(f"missing required field: {field}")
+            raise ScoreError(f"缺少必需字段：{field}")
         value = _number(record[field], field)
         if value < 0 or value > maximum:
-            raise ScoreError(f"{field} must be between 0 and {maximum}; got {value:g}")
+            raise ScoreError(f"{field} 必须在 0 到 {maximum} 之间；当前值为 {value:g}")
         normalized[field] = value
 
     total = round(sum(normalized.values()), 4)
@@ -77,7 +77,7 @@ def calculate(payload: Any) -> Any:
         return [score_record(item) for item in payload]
     if isinstance(payload, dict):
         return score_record(payload)
-    raise ScoreError("input must be one JSON object or a list of JSON objects")
+    raise ScoreError("输入必须是一个 JSON 对象或 JSON 对象列表")
 
 
 def load_payload(path: str | None) -> Any:
@@ -85,15 +85,15 @@ def load_payload(path: str | None) -> Any:
         try:
             text = Path(path).read_text(encoding="utf-8")
         except OSError as exc:
-            raise ScoreError(f"cannot read {path}: {exc}") from exc
+            raise ScoreError(f"无法读取 {path}：{exc}") from exc
     else:
         text = sys.stdin.read()
     if not text.strip():
-        raise ScoreError("no JSON input received")
+        raise ScoreError("没有收到 JSON 输入")
     try:
         return json.loads(text)
     except json.JSONDecodeError as exc:
-        raise ScoreError(f"invalid JSON at line {exc.lineno}, column {exc.colno}: {exc.msg}") from exc
+        raise ScoreError(f"JSON 无效，位于第 {exc.lineno} 行、第 {exc.colno} 列：{exc.msg}") from exc
 
 
 def self_test() -> None:
@@ -128,20 +128,20 @@ def self_test() -> None:
             score_record(invalid)
         except ScoreError:
             continue
-        raise AssertionError(f"invalid record was accepted: {invalid}")
+        raise AssertionError(f"错误地接受了无效记录：{invalid}")
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Calculate gongkao GEO five-dimension totals and tiers from JSON."
+        description="根据 JSON 计算公考 GEO 五维总分与等级。"
     )
     parser.add_argument(
         "input",
         nargs="?",
-        help="JSON file containing one score object or a list; use '-' or omit for stdin",
+        help="包含单个评分对象或对象列表的 JSON 文件；使用 '-' 或省略时从标准输入读取",
     )
-    parser.add_argument("--pretty", action="store_true", help="pretty-print JSON output")
-    parser.add_argument("--self-test", action="store_true", help="run built-in scoring tests")
+    parser.add_argument("--pretty", action="store_true", help="美化 JSON 输出")
+    parser.add_argument("--self-test", action="store_true", help="运行内置评分测试")
     return parser
 
 
@@ -150,12 +150,12 @@ def main() -> int:
     try:
         if args.self_test:
             self_test()
-            print("score_geo self-test: PASS")
+            print("score_geo 自测：通过")
             return 0
         payload = load_payload(args.input)
         result = calculate(payload)
     except (ScoreError, AssertionError) as exc:
-        print(f"score_geo: ERROR: {exc}", file=sys.stderr)
+        print(f"score_geo：错误：{exc}", file=sys.stderr)
         return 2
 
     indent = 2 if args.pretty else None
