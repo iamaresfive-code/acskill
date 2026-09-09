@@ -1,0 +1,42 @@
+schema_version: "1.0"
+
+knowledge_base:
+  name: ""
+  root: "."
+  platform: "markdown-folder"   # markdown-folder | obsidian
+
+governance:
+  structure_mode: "adaptive"    # adaptive | custom | standard
+  write_mode: "confirm-first"   # read-only | confirm-first | trusted-task
+
+sources:
+  immutable: true
+  source_roots: []
+
+knowledge:
+  roots: []
+
+markdown:
+  frontmatter: true
+  link_style: "unknown"         # wikilink | markdown | mixed | unknown
+
+index:
+  home: null
+  full_index: null
+  project_index: null
+
+authority:
+  workspace_rules: []
+  structure_rules:
+    - ".second-brain/structure-contract.md"
+
+projects:
+  status_policy: "user-or-existing-rule"
+
+concurrency:
+  mode: "single-agent"          # single-agent | multi-agent
+
+adaptive_scan:
+  last_scan_at: null
+  confirmed_at: null
+  structure_fingerprint: null

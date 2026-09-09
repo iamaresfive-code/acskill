@@ -1,0 +1,7 @@
+interface:
+  display_name: "第二大脑知识库管理器 v1.0"
+  short_description: "自适应管理本地 Markdown / Obsidian 知识库，支持查询、入库、更新、合并、来源追踪和健康检查"
+  default_prompt: "使用 $acs-second-brain-manager v1.0 管理我的本地知识库。第一次接管已有知识库时先只读理解现有目录、规则、索引、来源和链接习惯，不要擅自重构；先给 Knowledge Base Understanding Report，确认后再在库内建立或复用治理配置。查询默认只读；新资料先读源、查重并判断 UPDATE / MERGE / CREATE / PENDING / SOURCE_ONLY，默认给出完整写入方案后再执行。原始材料与知识页分层，重要内容区分来源事实、用户判断、Agent 推断、用户决策和待核。"
+
+policy:
+  allow_implicit_invocation: true
