@@ -1,192 +1,378 @@
 ---
 name: acs-gongkao-geo-research
-description: 调查中国公务员及公职考试培训机构、品牌和IP名师在生成式搜索与AI搜索中的可见性。用于省、市或区域公考机构GEO排名、地区竞争格局、机构与名师实体分析、AI搜索可见性、候选机构召回、概念空白、指定机构比较及可引用的HTML研究报告。先以多渠道两轮发现建立候选池，再以独立Measurement题池统一评分；不得用来评价教学质量、上岸效果、市场份额或一般口碑。
+description: 调查中国公务员及公职考试培训机构、品牌和老师/IP 在生成式搜索与 AI 搜索中的可见性，支持地区 GEO 竞争格局、指定机构深挖、机构比较、候选召回、实体解析、Semantic Discovery Audit、AI Search Visibility 与正式咨询报告生成。v2.1 先完成地区、指定关注主体、正式输出格式三步 Preflight，再执行 Candidate Discovery → Entity Resolution → Semantic Coverage → Measurement → Evidence → Scoring → Strategy Analysis → Report Model → Selected Renderer；不得用来评价教学质量、上岸效果、市场份额或一般口碑。
 metadata:
-  version: "2.0"
+  version: "2.1"
 ---
 
-# 公考机构 GEO 调研
+# 公考机构 GEO 调研 v2.1
 
-当前版本：`v2.0`。本版把“先找全对象，再统一测量”设为地区全景调查的强制架构。
+版本定位：**Research Quality + Consulting Report Experience Upgrade**。
 
-GEO 观察的是机构、品牌或老师/IP 在公开信息环境中被发现、理解、确认、召回和引用的能力。它不是教学质量、市场份额、经营规模、学员效果、真实口碑或任何大模型官方推荐排名。
+v2.1 不是推翻 v2.0。v2.0 的 Candidate Discovery、Entity Resolution、Discovery / Measurement / Verification 分离、Evidence Audit、五维 GEO Score、Authority × Recall 全部保留；v2.1 在此基础上重点增加：三步 Preflight、Semantic Discovery Coverage、双门禁 Candidate Freeze、IP Measurement、Report ↔ Data 一致性、统一 Report Model、三类 Renderer 与咨询报告设计系统。
 
-## 先判断研究模式
+GEO 观察的是机构、品牌或老师/IP 在公开信息环境中被发现、理解、确认、召回和引用的能力。它不是教学质量、市场份额、经营规模、真实口碑、学员上岸率，也不是任何大模型官方推荐榜。
 
-| 模式 | 触发方式 | 主体范围 |
+## 0. 启动前强制 Preflight
+
+任何新 GEO 调研，在完整 Research Run 前必须明确三个参数：
+
+1. `requested_region`：省、市或区域；
+2. `requested_entities`：用户是否指定关注机构、品牌或老师/IP；可以明确“不指定”；
+3. `requested_output_format`：`docx|pdf|html`，默认一次任务只正式交付用户明确选择的格式。
+
+先读 [preflight.md](references/preflight.md)。
+
+### 对话规则
+
+- 用户已给出的参数自动识别，不重复机械询问。
+- 三项都缺：只先问地区。
+- 已知地区：继续问是否有指定关注主体。
+- 已知地区和指定主体：只问 Word、PDF 还是 HTML。
+- 三项都明确：总结确认后直接开始。
+- 非行政区区域如珠三角、粤东、苏南，先建立 Scope；存在明显口径争议才再确认。
+
+### 指定主体规则
+
+指定关注只解决 Candidate Recall：
+
+- `user_specified=true` 的主体强制进入 Candidate Pool；
+- 不自动加分、不自动进入正式排名、不提高证据等级、不提高置信度；
+- 最终必须落在 `scored|evidence-insufficient|unresolved|merged` 之一，不能静默消失；
+- 证据不足时进入“用户指定关注 / 证据不足观察组”；无法解析时进入“用户指定关注 / 未解析主体”。
+
+### 输出格式规则
+
+- Word → 最终正式产出仅 `report.docx`；
+- PDF → 最终正式产出仅 `report.pdf`；
+- HTML → 最终正式产出仅 `report.html`；
+- 只有用户明确要求多个格式时，才允许多个正式文件。
+
+内部 CSV、JSON、SVG、临时 HTML/DOCX/PDF 都属于 Research / Render 资产，不等于正式交付物；除非用户另行要求，不向用户展示。
+
+只有 `region_confirmed=true`、`specified_entities_confirmed=true`、`output_format_confirmed=true` 时，完整 Research Run 才能开始；否则 `run_status=preflight-incomplete`。
+
+## 1. 研究模式
+
+| 模式 | 触发 | 研究对象 |
 | --- | --- | --- |
-| 地区全景 `regional-landscape` | 用户只给省、市或区域 | 用六条渠道两轮发现整个地区候选；统一测量后重点分析领先者，低证据主体进入待观察组 |
-| 单主体深挖 `institution-deep-dive` | 用户点名一个机构、品牌或老师 | 只调查点名主体；不得自动补竞品 |
-| 多主体比较 `institution-comparison` | 用户点名两个及以上主体 | 只比较点名集合；用户明确要求时才增加对标 |
-| 空白机会 `gap-analysis` | 用户询问机会词、概念空白 | 从真实无结果、弱结果、实体歧义中形成机会地图 |
+| 地区全景 `regional-landscape` | 用户给省、市或区域 | 自动发现整个地区候选；指定关注主体只做强制召回 |
+| 单主体深挖 `institution-deep-dive` | 用户点名一个主体 | 只深挖点名主体；用户明确要求才加 benchmark |
+| 多主体比较 `institution-comparison` | 用户点名两个及以上主体 | 只比较点名集合；不自动扩张名单 |
+| 空白机会 `gap-analysis` | 用户问机会词、概念空白 | 从真实弱召回、无结果、实体歧义、概念断层中形成机会地图 |
 
-“哪家教学最好”、退费纠纷、市场份额、公告大纲或宣传文案不属于本 Skill。用户把 GEO 等同于教学排名时先纠正口径。
+“哪家教学最好”“哪家通过率最高”“真实口碑排名”不属于本 Skill。用户把 GEO 等同于教学排名时先纠正口径。
 
-## 开始前问询
-
-首次回复只补齐尚未给出的关键信息：
+## 2. v2.1 Research Engine 总流程
 
 ```text
-开始前请确认：
-1. 要调查哪个省、市或区域的公考机构 GEO 排名？
-2. 是否需要把您自己的机构强制纳入报告？如需要，请提供准确对外名称；简称、曾用名或官网可选。
+Preflight
+↓
+Region / Exam Ecology
+↓
+Candidate Discovery
+↓
+Entity Resolution
+↓
+Semantic Coverage Audit
+↓
+Coverage Gate + Saturation Gate
+↓
+Candidate Pool Freeze
+↓
+Institution Measurement + IP Measurement
+↓
+Verification + Evidence Audit
+↓
+Five-Dimension Scoring
+↓
+Strategy Analysis
+↓
+Report Model
+↓
+Selected Renderer
+↓
+Strict Validation + Visual QA
 ```
 
-- 已给地区则不重复问地区。
-- 地区全景必须询问是否纳入自有机构；用户未确认前不从画像、记忆或历史对话猜测。
-- 自有机构使用 `owned-forced` 入选方式，强制保留但不加分；泛词未命中就如实记零。
-- 单/多主体指定模式不再询问自有机构，只调查当前请求点名集合。
-- 地区与机构报告默认调查可核验的 IP 名师，不再额外询问。
+详细方法读 [methodology.md](references/methodology.md)，数据字段读 [data-schema.md](references/data-schema.md)，来源政策读 [source-policy.md](references/source-policy.md)。
 
-## 范围卡
+## 3. Discovery / Measurement / Verification 必须隔离
 
-搜索前记录：研究模式、地区与城市、指定主体、自有机构决定、查询深度、采样模式、观察日期和交付格式。默认深度 `standard`，默认采样模式 `public-web-proxy`，默认交付 `report.html`。
+`query_purpose` 只有：
 
-公开网页代理观察不等于真实 AI 回答。只有实际用同一题池采样多个生成式搜索引擎、保存原始回答和时间，才可另列 `multi-engine sampling`；两类结果不得混算。
+- `discovery`：找候选、别名、关系；不计泛词覆盖；
+- `measurement`：统一无品牌问题实测；只有合法 Measurement 才进入 Recall / Query Coverage；
+- `verification`：核验官网、公司、老师、课程、关系和外部来源；不计 Query Coverage。
 
-## v2 三类查询
+v2.1 的 `queries.csv` 增加 `measurement_target`：
 
-`query_type` 仍只有 `generic` 与 `brand`；新增且必须填写 `query_purpose`：
+- `institution`：机构 Measurement；
+- `ip`：老师/IP Measurement；
+- 非 Measurement 留空。
 
-- `discovery`：发现候选与别名，可为泛词或品牌词；不进入覆盖率分母或命中。
-- `measurement`：统一测量泛词召回；必须是 `generic`。只有 `generic + measurement + sampled` 进入分母。
-- `verification`：核验主体、官网、名师、课程、关系与来源；不进入泛词覆盖。
+只有同时满足：
 
-不得把 Discovery 或 Verification 结果改记为 Measurement 命中。实际结果逐条写入 `query_results.csv`，`scores.csv` 的 `generic_hits`、`generic_queries`、`brand_hits` 必须由日志派生，而不是手填想象。
+```text
+query_type=generic
+query_purpose=measurement
+measurement_target=institution
+status=sampled
+```
 
-## 地区全景候选召回
+才进入机构 `generic_queries` 分母；命中还必须对应 result 的 `counts_as_measurement_hit=true`。
 
-### 六条发现渠道
+IP Measurement 另行计算，不与机构总榜混算。
 
-1. `user-query`：当地用户会直接提出的机构、课程、科目、面试与决策问题。
-2. `exam-vertical`：省考、国考、事业单位、选调、遴选、军队文职及当地真实专项。
-3. `institutional`：政府、高校、招投标、培训合作、办学主体、招聘与公开活动来源。
-4. `platform`：地图、视频、播客、问答、教育平台、稳定账号和站内检索。
-5. `expert-ip`：老师实名、稳定别名、科目 IP、课程主讲人与创始人线索。
-6. `entity-alias`：品牌简称、公司名、曾用名、老师/IP 与机构关系、同名污染排除。
+## 4. 地区 Discovery：六路保留，但升级为 Semantic Coverage
 
-标准档应覆盖六条；受限环境最低也须覆盖 `user-query`、`exam-vertical`、`institutional`、`entity-alias`，并在报告说明未覆盖渠道。
+六路 Discovery 保留：
 
-### 两轮发现与冻结
+1. `user-query`
+2. `exam-vertical`
+3. `institutional`
+4. `platform`
+5. `expert-ip`
+6. `entity-alias`
 
-第一轮：按地区、考试、产品、师资和机构性来源建立初始池，所有线索立即写入 `candidate_pool.csv`，不能只把熟悉品牌放进表。
+v2.1 不再把“每条渠道跑过一条查询”视为发现完成。必须先根据当地考试生态建立 `semantic_theme`，再生成 Discovery Query。
 
-第二轮：围绕第一轮遗漏方向补搜本土小机构、老师型品牌、简称/公司名、非省会城市与平台线索。完成 `Missing Entity Audit`：逐项检查全国品牌、本土综合机构、细分机构、老师/IP 型品牌、新主体和各主要城市是否存在空白。
+典型语义主题包括但不限于：省/市考、国考、事业单位、选调、定向选调、遴选、军队文职、公安警法、面试形式、本地高校活动、老师/IP、品牌简称、公司名、曾用名。具体主题必须动态适配地区，禁止写死天津案例。
 
-然后执行 `Candidate Pool Freeze`：归并别名，排除跨区/非公考/纯历史噪声，给每条候选确定最终状态。冻结前不得建立 Measurement 得分榜。
+所有覆盖情况写入 `discovery_coverage.csv`。字段和状态见 [data-schema.md](references/data-schema.md)。
 
-候选最终状态只允许：`scored`、`evidence-insufficient`、`merged`、`excluded`、`unresolved`。第二轮新增可评估实体占比高于 35% 时视为可能尚未饱和：继续一轮搜索，或在报告“第二轮新增占比说明”中解释停止依据。
+## 5. Candidate Pool Freeze：双门禁
 
-## 指定主体模式
+候选池只有同时通过两道门才可 Freeze：
 
-- 单主体或多主体只保留用户点名主体，入选方式为 `user-requested`。
-- 用户明确要求增加对标时才可加入 `benchmark`，并说明选择依据。
-- 指定主体即使泛词零命中也保留，不得用品牌词补成泛词命中。
-- 指定模式不运行地区候选扩张；仍需建立实体、查询结果、证据和逐维评分理由。
+### Gate A — Semantic Coverage Gate
 
-## 实体治理
+所有 `required=true` 的关键 `semantic_theme` 均需达到 `covered|no-result-reviewed`。如果关键考试垂类、Institutional Source、Platform、Expert/IP、Entity Alias 等存在未覆盖项，不得冻结。
 
-所有候选先进入 `entities.csv`，使用稳定 `entity_id`。品牌、公司、老师、平台、产品与地区是不同实体；多对多关系写入 `entity_relations.csv`，不把复杂关系塞进一个文本字段。
+### Gate B — Saturation Gate
 
-- 规范名、公司名、简称、曾用名和老师/IP 关系分别保存。
-- 只按已核验别名做归并；可运行 `resolve_entities.py` 检查精确别名。
-- 短别名、历史名或常见词必须写 `disambiguation_notes`，明确同名污染如何排除。
-- 找不到官网不等于机构不存在；主体不清则标 `unresolved` 或 `evidence-insufficient`。
-- 机构性 A1 证据只支持其直接陈述的合作、活动或主体关系，不自动成为对该机构全部能力的背书。
+针对性补漏后新 Eligible Candidate 必须明显收敛。默认可接受任一条件：
 
-## 证据政策
+- 最近一轮新增率 `<10%`；或
+- 最近一轮新增可评估独立机构 `<=1`；或
+- 连续两轮无重要新增主体。
 
-开始取证时读 [source-policy.md](references/source-policy.md)，建表时读 [data-schema.md](references/data-schema.md)。核心规则：
+第二轮仍新增大量主体时不得仅因为“低于 35%”就判定饱和。
 
-- 搜索摘要只作线索；关键事实必须打开原页面。
-- A1 为政府/高校/监管等高质量独立来源；A2 为机构官方；B 为稳定实名平台；C 为软文、榜单和聚合内容。
-- 每条重要陈述标为确认事实、机构自述、代理指标或分析推断。
-- 同一稿件转载不重复计数。同 URL 多用途引用必须填写 `duplicate_group`、`duplicate_reason`、`review_status=reviewed` 和 `counting_scope`。
-- `evidence_id` 必须匹配 `E\d+`，如 `E001`；不得加 TJ、SD 等地区前缀。正文用 `[E001]` 回指。
+## 6. 实体治理与指定主体深度解析
 
-## 五维评分与展示
+用户给出的名字只是入口。至少尝试扩展：
 
-开始评分前完整读取 [methodology.md](references/methodology.md)。五维权重保持不变：泛词覆盖 30、实体清晰 25、外部来源多样性 20、概念占位 15、内容新鲜度 10。
+`canonical_name`、`aliases`、`legal_name`、`former_names`、`brand_name`、`official_domain`、`official_account`、`teacher/IP`、`parent_brand`、`related_entity`。
 
-1. 每一维先在 `score_details.json` 写分数、理由、证据编号或查询编号。
-2. 使用 `score_geo.py` 计算总分和等级；加 `--run-dir` 时命中指标从查询日志派生。
-3. 分数之外独立评定证据置信度。
-4. 入选方式 `discovered`、`user-requested`、`owned-forced`、`benchmark` 只解释样本来源，不参与加分。
-5. 60 分以下或低置信度主体分组展示，不强调 1—2 分和精确名次；主榜不出现“本土最强”“唯一首选”等无充分证据措辞。
+品牌、公司、老师、产品、平台、地区使用独立实体节点；多对多关系写 `entity_relations.csv`。
 
-名师 GEO 单列，不和机构混排。粉丝量、播放量或宣传称号不直接给机构加分；只有可核验的“机构—名师—科目—产品—地域”关系才影响相应维度。
+短别名、常见词、历史同名必须写 `disambiguation_notes`。不能因名称相似自动合并。
 
-## 完整执行流程
+天津回归中，“北宋”必须能区分北宋教育/北宋公考与历史朝代污染；该规则只能出现在 fixture / test data，不得写成生产逻辑。
 
-1. 解析请求并输出范围卡。
-2. 核验地区、城市、考试和面试生态。
-3. 地区模式执行第一轮六渠道 Discovery；指定模式建立点名主体清单。
-4. 建立初始 `candidate_pool.csv` 与 `entities.csv`。
-5. 地区模式执行第二轮 Discovery 和 Missing Entity Audit。
-6. 归并别名、排除噪声、补实体关系，冻结候选池。
-7. 对冻结后的可评估主体生成同一套 Measurement 题池。
-8. 逐题执行并写入 `query_results.csv`；不能仅写命中汇总。
-9. 执行 Verification，核验官网、公司、老师、课程、地域、近期内容与独立来源。
-10. 建立 `evidence.csv`、`entity_relations.csv` 和 `ip_entities.csv`。
-11. 去重 URL/转载，评定来源等级、独立性、陈述类型与证据置信度。
-12. 在 `score_details.json` 逐维写证据理由。
-13. 运行评分脚本，生成并复核 `scores.csv`。
-14. 撰写 `report.md`，包含候选覆盖审计和 Authority × Recall 诊断。
-15. 草稿校验、修错、处理警告。
-16. 生成 `report.html`，做浏览器/受限环境渲染检查。
-17. 严格门禁通过后交付 HTML 和运行目录。
+## 7. 证据政策
 
-## 报告必须回答
+核心规则：
 
-- 候选池是否覆盖主要主体类型和城市？第二轮新增率是否显示仍可能漏项？
-- 哪些机构在独立 Measurement 泛词中自然出现？哪些只是品牌核验可见？
-- 谁在“权威性高/低 × 召回高/低”四象限中，依据是什么？
-- 名师实体是否帮助形成稳定的机构—名师—科目—产品—地域关系？
-- 领先者的优势、短板和可验证优化动作是什么？
-- 哪些主体证据不足，只能进入待观察组？
+- 搜索摘要只作线索，关键事实打开原页面；
+- A1：政府/高校/监管等高质量独立来源；A2：机构第一方；B：稳定实名平台；C：软文/榜单/聚合；
+- A1 只支持它直接陈述的事件或关系，不泛化为机构全部能力背书；
+- 同一稿件转载不重复计数；同 URL 多用途引用需结构化说明；
+- 每条重要陈述标：确认事实、机构自述、代理指标、分析推断；
+- Evidence ID 使用 `E\d+`，正文引用 `[E001]`。
 
-报告结构与机器字段见 [report-template.md](references/report-template.md)。正文、标题、表头和结论用中文；英文仅保留文件名、字段名、枚举值、网址和通用技术缩写。
+## 8. 五维 GEO Score 保持 v2.0，不改权重
 
-## HTML 渲染检查
+继续使用：
 
-推荐路径：
+- Query Coverage /30
+- Entity Clarity /25
+- External Diversity /20
+- Concept Ownership /15
+- Freshness /10
 
-1. `python3 scripts/generate_report_html.py <run-dir>`。
-2. 能用浏览器时直接打开 `report.html`，检查中文字体、标题、链接、宽表横向滚动；再用浏览器“打印为 PDF”检查 A4 分页、裁切、重叠和黑块。
-3. 无 GUI 时至少做结构检查：运行生成器自测和严格校验；若有 Chromium，可用其 headless 截图/打印 PDF。环境不支持浏览器时必须在交付说明中标为未完成，不能声称已视觉检查。
+满分 100。不得为了任何具体机构调权重或写死加分。
 
-本 Skill 不假设特定浏览器命令，因为宿主环境可能不同；调用者应使用当前环境已提供的浏览器或 PDF 渲染工具。
+逐维理由写 `score_details.json`；最终数值由 `scripts/score_geo.py` 计算。证据置信度独立于总分。
 
-## 脚本与门禁
+## 9. IP Measurement
+
+深度地区模式默认增加 IP Measurement，无品牌问题例如：
+
+- `{region}申论老师推荐`
+- `{region}行测老师推荐`
+- `{region}公考面试老师推荐`
+- `{region}事业单位面试老师推荐`
+- `{region}选调老师推荐`
+- `{region}谁最懂本地公考考情`
+
+IP Measurement 与机构 Measurement 分开。人物不进入机构总榜。
+
+如果实际 Run 没有执行 IP Measurement，正式报告只能写“IP实体 / 专家可见性观察”，不得写“IP GEO 排名”。
+
+## 10. Report Product：前台商业化，后台工程化
+
+正式报告定位：**Industry Intelligence Report / Strategy Consulting Report**。
+
+Main Report 优先讲结论、竞争格局、机会和行动，不堆 `candidate_pool.csv`、`query_purpose`、`regional-landscape` 等后台字段；完整方法、Schema、Candidate Audit、Query Results、Evidence Index 放 Appendix。
+
+地区深度报告建议 20–28 页但不为页数注水。推荐顺序：
+
+1. 封面
+2. 研究概览 / KPI Cards
+3. Executive Summary
+4. GEO 综合排名与市场格局
+5. Authority × Recall 竞争矩阵
+6. Candidate Coverage / 调研完整性
+7. 研究口径与评分体系
+8. GEO Scorecard
+9. 重点机构诊断
+10. IP / Expert GEO
+11. 固定 Query 占位观察
+12. 概念山头 / Gap Map
+13. 竞争路线
+14. 区域进入策略
+15. 90 天 GEO 内容与知识资产工程
+16. 月度监测看板
+17. Appendix
+
+完整报告结构读 [report-template.md](references/report-template.md)，视觉规范读 [report-design-system.md](references/report-design-system.md)。
+
+## 11. 强制图表
+
+正式地区报告至少真实嵌入：
+
+- `geo-score-ranking.svg`
+- `authority-recall-matrix.svg`
+
+深度报告建议同时包含：
+
+- `dimension-heatmap.svg`
+- `candidate-funnel.svg`
+
+所有图表必须由本次 Run 的 `scores.csv`、`score_details.json`、`evidence.csv`、`query_results.csv` 动态生成。禁止复制旧报告图片、旧分数或硬编码机构。
+
+使用：
 
 ```bash
-python3 scripts/score_geo.py scores-input.json --run-dir <run-dir> --pretty
-python3 scripts/resolve_entities.py <run-dir>/entities.csv "待解析名称"
-python3 scripts/validate_run.py <run-dir> --draft
-python3 scripts/generate_report_html.py <run-dir>
-python3 scripts/validate_run.py <run-dir> --strict
-python3 scripts/test_v2.py
+python3 scripts/generate_charts.py <run-dir>
 ```
 
-`--draft` 只允许制作中暂缺 HTML。`--strict` 在错误或未处置警告存在时返回非零；可保留的人工警告必须写入 `warning_resolutions.csv`，填写精确 `issue_code + issue_key`、处置结论、复核人和时间，复验后才放行。旧 v1.1 目录可被兼容识别为 `legacy-schema` 信息，不伪装成 v2 结果。
+## 12. Report Model 与 Renderer
 
-## 完成标准
+推荐统一：
 
-- 地区模式已完成两轮、多渠道召回、漏项审计和候选池冻结；指定模式未扩张名单。
-- `query_results.csv` 能复算泛词分母、泛词命中和品牌命中。
-- 候选、实体、关系、证据、评分和报告中的对象及数量完全一致。
-- 每个评分维度有理由及证据/查询编号；每个评分主体至少有一条真实可打开证据。
-- 报告含候选覆盖审计、Authority × Recall、IP 名师、局限和证据附录。
-- HTML 内 `[E001]` 可跳转到证据索引，来源网址可点击，打印样式不裁切宽表。
-- `validate_run.py <run-dir> --strict` 返回 0；任何未处置警告都不能称为完成。
-- 最终默认直接交付 `report.html`，同时保留完整运行目录供审计。
+```text
+Research Data
+→ Analysis Model
+→ report_model.json
+→ Selected Renderer
+```
+
+Report Model 保证 Word/PDF/HTML 使用同一章节、数字、排名、图表、结论和 Evidence Reference；三个 Renderer 不得各自重新让 LLM 生成正文。
+
+生成：
+
+```bash
+python3 scripts/build_report_model.py <run-dir>
+python3 scripts/generate_report_docx.py <run-dir>
+python3 scripts/generate_report_pdf.py <run-dir>
+python3 scripts/generate_report_html.py <run-dir>
+```
+
+一次任务只运行用户选择的正式 Renderer。PDF Renderer 可使用临时中间文件，但临时文件不得作为正式交付物保留或展示。
+
+## 13. Strict Validation
+
+使用：
+
+```bash
+python3 scripts/validate_run.py <run-dir> --strict
+```
+
+v2.1 strict 门禁至少检查：
+
+- Preflight 三参数都确认；
+- `requested_output_format` 存在；
+- 只要求用户选择的正式 Artifact；额外正式 Artifact 给 warning；
+- Semantic Coverage Gate 通过；
+- Saturation Gate 通过；
+- Candidate 状态统计与报告一致；
+- 实体图谱节点、独立机构候选、可评估机构、正式评分机构、IP Entity、Evidence、三类 Query 数量与报告一致；
+- 所有正式评分机构有 `entity_id`；
+- `user_specified` 不产生 Score Bonus；
+- 指定主体不得静默消失；
+- Ranking 与 Authority × Recall 图表节点存在且数据来自本次 Run；
+- Main Report 存在 Appendix；
+- 正式报告不大面积暴露后台机器字段；
+- Word/PDF 表格字号和分页符合设计系统。
+
+## 14. 视觉 QA
+
+不能只跑代码测试。正式输出后必须按用户选择格式做视觉检查：
+
+- Word：渲染 DOCX 为逐页 PNG；
+- PDF：逐页渲染 PDF；
+- HTML：浏览器 viewport + print layout。
+
+至少检查：封面、Executive Summary、排名图、Authority × Recall、Scorecard、重点机构、Query Gap、概念山头、90 天方案、Appendix 评分表、Evidence Index。
+
+检查裁切、溢出、中文字体、图像清晰度、Label 重叠、孤页、异常空白页、字号过小、图表跨页、页脚覆盖正文。
+
+## 15. 强制回归
+
+### 天津 Real Smoke Test
+
+只输入地区天津市、不指定机构、正式产出 Word。不得人工预置津仕或北宋。
+
+必须检查：
+
+- 津仕自然进入 Candidate Pool；
+- 北宋/北学优仕自然进入 Candidate Pool；
+- 北宋别名和法律主体正确解析并排除历史朝代污染；
+- Discovery 不计 Query Coverage；
+- A1 高校证据只支持对应维度；
+- Candidate Pool 通过双门禁后才冻结；
+- 最终只正式生成 Word；
+- Word 真实包含咨询报告要求的关键章节和图表。
+
+### 防天津过拟合
+
+至少再测试两个不同市场：
+
+- 本土机构 / IP 活跃市场，例如广东类市场；
+- 全国品牌占主导的普通省级市场。
+
+生产逻辑不得写死天津、津仕、北宋、天津考试结构；这些仅允许存在于测试 fixture。
+
+## 16. 完成标准
+
+v2.1 只有同时满足以下条件才可称完成：
+
+- 三步 Preflight 正确且不重复提问；
+- 用户选什么格式就只正式交付什么格式；
+- v2.0 三类 Query 隔离和五维评分无回归；
+- 六路 Discovery + Semantic Coverage 实现；
+- Coverage Gate + Saturation Gate 实现；
+- 指定主体强制调查但不加分；
+- IP Measurement 与机构 Measurement 分开；
+- 报告数字与结构化数据一致；
+- Ranking、Authority × Recall 真实生成并嵌入；
+- Main Report 是正式行业研究/战略咨询报告，而非运行日志；
+- Appendix 保留完整可审计性；
+- 天津真实 Smoke Test 与至少两个其他地区 Regression 通过；
+- 最终正式文件完成视觉 QA。
 
 ## 禁止事项
 
-- 不先定熟悉名单再找证据；不把主流品牌列表当候选池。
-- 不将 Discovery/Verification 命中计入 Measurement。
-- 不根据用户身份或历史记忆自动加入机构。
-- 不把品牌词、软文数量、粉丝量或搜索摘要包装成泛词领先、教学实力或市场份额。
-- 不自动合并同名品牌、公司、老师或历史噪声。
-- 不为证据弱主体凑精确排名，不把入选方式当质量等级。
-- 不只交 Markdown/CSV，不把“请自行导出”当完成。
+- 不先定熟悉名单再找证据；
+- 不把 Discovery / Verification 命中计入机构 Measurement；
+- 不根据用户身份、记忆或历史对话自动加入机构；
+- 不因 `user_specified` 提高分数、证据等级、排序或置信度；
+- 不把品牌词、软文数量、粉丝量、搜索摘要包装成泛词领先、教学实力或市场份额；
+- 不自动合并同名品牌、公司、老师；
+- 不用旧天津报告的图片、分数、排名；
+- 不默认同时生成 Word + PDF + HTML；
+- 不把内部 CSV/JSON 作为用户正式报告；
+- 不把“请自行导出”当完成。
