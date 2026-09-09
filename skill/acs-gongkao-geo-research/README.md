@@ -1,165 +1,210 @@
-# acs-gongkao-geo-research v2.1
+# acs-gongkao-geo-research v2.1.1
 
 > 公考行业 GEO 竞争研究与咨询报告 Skill
 
-如果你第一次接触 GEO，可以先把它理解成：
+如果你第一次接触 GEO，可以把它理解成：
 
-**调查一家公考机构、老师或品牌，在 AI 搜索与生成式搜索环境里，是否容易被找到、能否被机器正确理解、有没有稳定的公开证据、在用户不输入品牌名时会不会自然被召回。**
+**调查一个公考机构、品牌或老师/IP，在 AI 搜索与生成式搜索环境里是否容易被找到、能不能被机器正确理解、在用户没有输入品牌名时是否会自然出现、公开证据是否足够稳定。**
 
-它不是“教学质量排行榜”，也不是“谁家上岸率最高”。
+它不是“教学最好排行榜”，也不是“谁家上岸率最高”。
 
-## 这个 Skill 解决什么问题
+## v2.1.1 为什么要升级
 
-公考行业里常见的问题是：
+v2.1 在全新广东环境实测后暴露出一个很典型的问题：全国品牌容易被找到，但一些真实存在、在本地市场有影响力的机构和老师/IP 可能没有进入最终报告；上游即使测过 IP，也可能因为 Report Model / Renderer 没消费数据而只剩一句“本次已执行 IP Measurement”。同时 HTML 把固定 A4 宽度直接套在浏览器，宽 SVG 和长表格容易出现错位、拥挤或横向溢出。
 
-- 大机构大家都知道，但 AI 在当地问题下到底会不会提到？
-- 本土机构有没有真实可被机器理解的品牌、公司、老师、课程、地区关系？
-- 某个老师很有影响力，这种影响力有没有形成可被 AI 识别的 Expert Entity？
-- 一家机构网上文章很多，到底是自然引用多，还是自己铺量多？
-- 一个新品牌进入广东、天津、山东等市场，哪些 GEO 山头已经被占，哪些问题还没有稳定答案？
+v2.1.1 不是给本土机构“抬分”，而是先解决四件事：
 
-v2.1 的目标，是把这些问题做成一套可复核的研究流程，同时把最终成品做成真正能拿去内部讨论的行业研究 / 战略咨询报告。
+1. **找得更完整**：补本土机构、工作室、老师型品牌和平台原生 IP 的发现路线；
+2. **没进榜也说清楚**：证据不足、实体未解析的主体进入观察组，不再静默消失；
+3. **数据不丢**：IP Measurement、Candidate Audit、Research Assets 真正进入 Report Model 和三套正式报告；
+4. **报告排得稳**：HTML 响应式，A4 只用于打印；宽表和 SVG 不再硬挤。
 
-## 第一次使用，只需要回答三个问题
+五维评分仍是 30/25/20/15/10，不因为某家机构或某个 IP 修改。
 
-Skill 启动时不会先给你讲 Candidate Pool、Schema、Measurement 这些技术词。
+## 第一次使用仍然只回答三个问题
 
-它只确认三件事：
-
-1. **调查哪里？** 例如广东省、天津市、广州市、珠三角。
-2. **有没有特别想看的机构、品牌或老师？** 没有也可以，让系统自己发现。
-3. **最后要 Word、PDF 还是 HTML？** 一次默认只正式生成你选择的那一种。
+1. **调查哪里？** 例如广东省、天津市、广州市、珠三角；
+2. **有没有特别想看的机构、品牌或老师/IP？** 没有也可以；
+3. **最后要 Word、PDF 还是 HTML？** 默认只正式交你选择的那一种。
 
 例如：
 
-> 做天津公考 GEO，把津仕和北宋也看一下，出 Word。
+> 做广东公考 GEO，不指定机构，出 HTML。
 
-三个参数都已经明确，系统就不再重复提问。
+三个参数齐全后直接开始，不重复问。
 
-## “指定机构”是什么意思
+## “指定机构/老师”不等于加分
 
-指定机构只表示：**这家一定要调查到。**
+指定只表示：**这个主体一定要调查到。**
 
-不表示：
+它不表示一定进排名，不自动增加 Recall，不提高证据等级，也不改变评分权重。
 
-- 一定进排名；
-- 自动加分；
-- 自动变成高置信度；
-- 用户希望它表现好。
+证据够 → 正常评分；证据不足 → 进入观察组；名字/实体还无法确认 → 标记 unresolved；老师/IP 做了独立 Measurement → 可标 `ip-measured`。
 
-如果证据足够，它正常评分；证据不足，它进入“用户指定关注 / 证据不足观察组”；名称都无法确认，就进入“用户指定关注 / 未解析主体”。不会悄悄删掉。
+## 为什么增加 Local Ecosystem Recall
 
-## 为什么 v2.1 要做 Semantic Coverage
+v2.1 已经有六路 Discovery 和 Semantic Coverage，但“考试主题都搜过”仍不等于“真实本土生态找全了”。一个地区可能有：
 
-v2.0 已经会从六条路线找机构，但后来发现一个关键问题：
+- 本土机构与工作室；
+- 基地班/地市型品牌；
+- 以老师个人为品牌的小机构；
+- 抖音、视频号、B站、小红书等平台原生公考 IP；
+- 以“选岗、公考规划、专业选择、面试”等概念占位的人物，而不是传统学科老师。
 
-**“渠道跑过”不等于“重要语义覆盖过”。**
+所以 v2.1.1 在 Candidate Freeze 前新增三组通用检查：
 
-例如 Institutional Discovery 不能只搜一次“高校 + 公考培训”就算完成。当地如果真实存在国考、事业单位、选调、定向选调、公安警法等生态，就应该分别覆盖相关语义。
+```text
+local-institution-ecosystem
+local-expert-ip
+platform-native-ip
+```
 
-所以 v2.1 增加 `discovery_coverage.csv`，记录：
+注意：这不是把广东某些机构或老师写死进去，而是要求系统真的覆盖“本土机构生态、概念型 Expert/IP、平台原生 IP”三类入口。
 
-- 哪条 Discovery 渠道；
-- 覆盖了哪个考试/业务语义；
-- 跑了多少查询；
-- 找到多少结果和有效候选；
-- 这个主题是否已经覆盖。
+## Candidate Pool 现在有三道门
 
-这样 Candidate Pool 冻结不再只看“搜索轮数”，而要同时通过：
+以前：
 
-**Semantic Coverage Gate + Saturation Gate。**
+```text
+Semantic Coverage Gate
++ Saturation Gate
+```
 
-## GEO 分数怎么理解
+现在：
 
-五维权重延续 v2.0，不因为任何机构改模型：
+```text
+Semantic Coverage Gate
++ Saturation Gate
++ Local Ecosystem Completeness Gate
+```
 
-- 泛词覆盖 30
-- 实体清晰 25
-- 外部来源多样性 20
-- 概念占位 15
-- 内容新鲜度 10
+而且有两条“不得漏掉”的机器规则：
 
-总分 100。
+- Discovery 已经解析出 entity_id，就必须进入 Candidate Pool；
+- 同一个未解析名称在至少两个独立来源域重复出现，不能直接丢掉，必须继续做候选/实体解析。
 
-这里的“泛词覆盖”只看统一无品牌 Measurement。Discovery 找到你、品牌词搜到你，都不能冒充泛词自然召回。
+## 为什么“没排名”不等于“GEO 为零”
 
-## 为什么要把“机构 Measurement”和“老师 Measurement”分开
+正式报告现在分至少两层：
 
-机构和老师不是同一种对象。
+### A. 正式 GEO 排名
 
-一家机构可能品牌实体很强，但老师个人召回弱；也可能某个老师非常强，但机构本身的公开实体关系不完整。
+Measurement、实体关系和证据达到正式评分要求。
 
-v2.1 因此把两类 Measurement 分开。没有做真正 IP Measurement 的 Run，报告只能叫“IP实体 / 专家可见性观察”，不能写成“IP GEO 排名”。
+### B. 本土候选观察组
 
-## 最终报告不再像研究运行日志
+对 `evidence-insufficient` / `unresolved` 主体公开说明：
 
-v2.1 明确区分：
+- 谁；
+- 什么类型；
+- 已经确认了什么；
+- 缺官网、法律主体、官方账号还是其他证据；
+- 为什么本次没有进入正式排名。
 
-- **Research Engine**：后台严谨，保留 CSV、JSON、Query、Evidence、Schema；
-- **Report Product**：前台给管理者看，先讲结论、格局、机会和动作。
+这样用户不会再看到“13 家证据不足”却不知道是哪 13 家。
 
-正式地区报告通常包含：
+## IP / Expert GEO 不再只剩一句话
 
-- Executive Summary
-- GEO 综合排名图
-- Authority × Recall 四象限
-- Candidate Discovery 漏斗
-- 商业解释型 Scorecard
-- 重点机构诊断卡
-- IP / Expert GEO
-- 固定 Query 占位
-- 概念山头 / Gap Map
-- 区域进入策略
-- 90 天 GEO 内容与知识资产工程
-- 月度监测看板
-- Appendix 研究审计
+如果真正执行了 IP Measurement，正式报告必须给出 IP 表格，至少包括：
 
-## Word / PDF / HTML 为什么只选一个
+- IP / 老师名称；
+- 关联机构；
+- IP hits / queries；
+- Recall；
+- 科目 / 概念标签；
+- 平台；
+- Evidence Confidence。
 
-内部研究会产生很多数据文件，但用户正式交付只按第三步选择。
+老师/IP 不和机构总榜混算，也不会因为粉丝多就直接获得机构 GEO 分数。
 
-- 选 Word → 只正式交 `report.docx`
-- 选 PDF → 只正式交 `report.pdf`
-- 选 HTML → 只正式交 `report.html`
+## 派生数字不用再手工补
 
-除非你明确说“Word + PDF”或“三种都要”。
+v2.1.1 的 `score_geo.py --run-dir` 自动从当前 Run 派生：
 
-这能避免一个任务最后出现一堆用户并不需要下载的中间文件。
+- 泛词命中数与分母；
+- Brand hits；
+- Evidence 数；
+- 独立来源域名数。
+
+这能避免“第一次 strict validation 必挂，然后人工补数”的流程。
+
+## 自有站很多，是否应该扣分？
+
+v2.1.1 暂时**不改总分模型**。
+
+报告新增解释指标：
+
+- `Owned Source Dependency Ratio`：多少证据/占位高度依赖自身域名；
+- `Evidence Authority Index`：独立来源与证据质量结构。
+
+这样可以区分“召回很高但高度依赖自有站”和“第三方证据结构更健康”，但不会在 bug-fix 版本里临时改权重。是否纳入正式评分留给后续版本单独研究。
+
+## public-web-proxy 要怎么理解
+
+如果 `sampling_mode=public-web-proxy`，代表这是一轮**公开网页代理观察**，不是对所有 ChatGPT、DeepSeek、豆包、百度AI等产品真实回答的全量截屏。
+
+它会受到 SEO 站群、聚合页、自有站矩阵、登录墙、平台可访问性和搜索索引差异影响。正式报告必须写清这层限制。
+
+并行 Agent 采样时，建议至少随机抽 20% Measurement Query 做第二采样员复判，降低不同 Agent 对“什么算命中”的口径漂移。
+
+## HTML 为什么会比 v2.1 整齐
+
+v2.1 的浏览器页面把 A4 宽度直接用在屏幕端，里面又有 900/930px SVG 和 7 列长文本表，容易挤压和溢出。
+
+v2.1.1 改为：
+
+- 浏览器端 `max-width` 响应式；
+- SVG 强制缩放到容器内；
+- 宽表允许横向滚动；
+- 商业 Scorecard 拆成“紧凑排名表 + 每家机构诊断卡”；
+- Authority × Recall 加标签避碰与引导线；
+- 只有打印时才使用 A4 规则。
+
+所以 HTML 和 PDF/Word 不再被迫使用同一套物理版面。
+
+## 报告为什么要有 Appendix
+
+前台报告要给管理者看，后台研究又必须能审计。Appendix 至少披露：
+
+- Candidate Status；
+- Research Assets；
+- Freeze Gate 状态；
+- Institution / IP Measurement 数；
+- Evidence Index。
+
+这样“结论从哪里来的”和“哪些主体没进入正式排名”都可以追溯。
 
 ## 最常用的说法
 
-你可以直接这样用：
+- “做广东公考 GEO，不指定机构，出 HTML。”
+- “做天津公考 GEO，把津仕和北宋也调查进去，出 Word。”
+- “深挖上岸村 GEO，PDF。”
+- “比较甲机构和乙机构在山东的 GEO 表现。”
+- “广东本土公考 IP 和规划类 IP 的 GEO 怎么样？”
+- “把证据不足的本土机构也列出来，不要只给正式排名。”
 
-- “做广东公考 GEO，不指定机构，出 PDF。”
-- “做天津公考 GEO，把津仕、北宋放进去，出 Word。”
-- “深挖一下上岸村 GEO，HTML。”
-- “比较甲机构和乙机构在山东的 GEO 表现，出 PDF。”
-- “看广东公考 GEO 里还有哪些概念空位。”
+## 开发者 / Agent 入口
 
-## 研究边界
+- `SKILL.md`：完整执行协议；
+- `references/v2.1.1-stability.md`：本次稳定性/召回/报告契约补丁；
+- `references/methodology.md`：研究方法；
+- `references/data-schema.md`：v2.1 基础数据结构；
+- `references/public-exam-query-bank.md`：Query Bank；
+- `references/report-design-system.md`：报告设计；
+- `scripts/preflight.py`：三步 Preflight；
+- `scripts/score_geo.py`：评分与派生指标；
+- `scripts/generate_charts.py`：本次 Run 图表；
+- `scripts/build_report_model.py`：统一 Report Model；
+- `scripts/generate_report_docx.py` / `generate_report_pdf.py` / `generate_report_html.py`：三 Renderer；
+- `scripts/validate_run.py`：Research + Report Contract + Renderer 校验；
+- `scripts/test_v211.py`：v2.1.1 回归。
 
-本 Skill 只能根据本次公开可访问的信息和实际采样做判断。它不能保证覆盖：
+## 验收命令
 
-- 登录墙；
-- 微信封闭内容；
-- 部分短视频平台；
-- 动态网页；
-- 搜索引擎个性化结果；
-- 所有模型在所有时间点的真实回答。
+```bash
+python3 -m py_compile scripts/*.py
+python3 scripts/test_v211.py
+python3 scripts/validate_run.py <run-dir> --strict
+```
 
-所以最终报告必须写清观察日期、采样方式、研究范围和证据边界。
-
-## 给开发者 / Agent 的文件
-
-- `SKILL.md`：完整执行协议
-- `references/preflight.md`：三步启动规则
-- `references/public-exam-query-bank.md`：Discovery / Measurement / Verification 题池
-- `references/methodology.md`：研究方法与五维评分
-- `references/data-schema.md`：运行目录数据结构
-- `references/report-template.md`：咨询报告结构
-- `references/report-design-system.md`：A4 报告视觉规范
-- `scripts/validate_run.py`：严格门禁
-- `scripts/generate_charts.py`：图表
-- `scripts/build_report_model.py`：统一 Report Model
-- `scripts/generate_report_docx.py` / `generate_report_pdf.py` / `generate_report_html.py`：三类 Renderer
-- `scripts/test_v21.py`：v2.1 行为回归
+自动校验通过后仍需做 Visual QA，尤其是 HTML 溢出、Word/PDF 裁切与坏分页。fixture 只验证规则，不能冒充真实地区 Measurement。
