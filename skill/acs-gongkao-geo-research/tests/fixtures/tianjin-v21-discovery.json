@@ -1,0 +1,32 @@
+{
+  "observation_date": "2026-09-09",
+  "purpose": "天津 v2.1 真实公开网页 Discovery 回归线索；仅用于测试，不参与生产评分。",
+  "queries": [
+    {"semantic_theme": "institutional-选调", "query": "天津 津仕 公考 选调 高校", "expected_entity": "津仕教育"},
+    {"semantic_theme": "institutional-定向选调", "query": "天津 北学优仕 北宋教育 定向选调 高校", "expected_entity": "北宋教育/北学优仕"}
+  ],
+  "observed_sources": [
+    {
+      "canonical_name": "津仕教育",
+      "legal_name": "津仕培训学校（天津）有限公司",
+      "source_url": "https://career.hebut.edu.cn/home/company/index/id/17704.html",
+      "source_type": "高校就业系统",
+      "notes": "页面可确认津仕教育、公务员/选调生/事业编等公职考试语义。"
+    },
+    {
+      "canonical_name": "北宋教育",
+      "aliases": ["北宋公考"],
+      "legal_name": "天津北学优仕培训学校有限公司",
+      "source_url": "https://career.hebut.edu.cn/company/index/id/17987.html",
+      "source_type": "高校就业系统",
+      "disambiguation": "北宋为品牌别名，必须排除中国历史朝代同名污染。",
+      "notes": "页面正文以北宋教育自述，并出现定向选调等公职考试语义。"
+    }
+  ],
+  "assertions": [
+    "津仕应能由 Institutional Discovery 自然进入 Candidate Pool",
+    "北宋/北学优仕应能由 Institutional + 定向选调语义自然发现",
+    "Discovery 线索不得直接计入 Institution Measurement Recall",
+    "测试 fixture 不得写入生产评分加分逻辑"
+  ]
+}
