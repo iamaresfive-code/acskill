@@ -1,7 +1,7 @@
 interface:
-  display_name: "公考机构 GEO 调研 v1.1"
-  short_description: "调查机构与IP名师GEO，输出证据、排名、机会和HTML报告"
-  default_prompt: "使用 $acs-gongkao-geo-research 开展公考机构 GEO 调研。开始前先确认调查区域，并询问是否要把我的机构强制纳入报告；只做地区时调查整体、排名分析领先机构并结合其IP名师GEO，纯指定机构请求只调查点名对象；最终必须使用生成脚本产出完整report.html，通过默认严格门禁并经浏览器检查后直接交付。"
+  display_name: "公考机构 GEO 调研 v2.0"
+  short_description: "两轮召回候选，核验机构与IP名师，输出可追溯HTML报告"
+  default_prompt: "使用 $acs-gongkao-geo-research v2.0 开展公考机构 GEO 调研。开始前确认调查区域，并询问是否把我的机构强制纳入；地区全景先做六渠道两轮候选发现、漏项审计和实体归并，再用独立 Measurement 题池统一测量，Discovery 和 Verification 不计入泛词覆盖；指定机构请求只调查点名对象。逐维记录评分理由，最终生成含可点击证据索引的 report.html，通过严格门禁与渲染检查后直接交付。"
 
 policy:
   allow_implicit_invocation: true

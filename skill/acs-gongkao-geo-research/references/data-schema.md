@@ -1,123 +1,189 @@
-# GEO 调研数据规范
+# GEO 调研数据规范 v2.0
 
-每次深度调研使用独立运行目录，目录名建议为“日期-地区或品牌”的英文安全写法。CSV 统一使用 UTF-8、首行字段名；日期统一为 `YYYY-MM-DD`，时间可用 ISO 8601。
+所有 CSV 使用 UTF-8、首行字段名；日期用 `YYYY-MM-DD`，时间用 ISO 8601。报告声明 `Schema版本：2.0` 后，下列文件均为必需。
 
 ## 标准目录
 
 ```text
 run-dir/
-├── queries.csv          # 必需：本次实际题池与采样记录
-├── evidence.csv         # 必需：逐条证据
-├── scores.csv           # 必需：逐机构五维评分
-├── ip_entities.csv      # 必需：IP名师实体及与机构的关系；未发现时保留表头
-├── report.md            # 必需：可追溯的正式报告源文件
-├── report.html          # 必需：默认最终交付件
-├── geo-index.png        # 可选：GEO 指数图
-└── geo-quadrant.png     # 可选：实体可核验性 × 泛词覆盖象限图
+├── queries.csv
+├── query_results.csv
+├── candidate_pool.csv
+├── entities.csv
+├── entity_relations.csv
+├── evidence.csv
+├── scores.csv
+├── score_details.json
+├── ip_entities.csv
+├── warning_resolutions.csv       # 有人工处置警告时使用
+├── report.md
+└── report.html
 ```
-
-可以增加 `claims.csv`、抓取快照或过程笔记，但不得用中间文件代替上述必需文件。网页全文应遵守版权边界，不为复现而批量保存无必要的受版权保护正文。
 
 ## queries.csv
 
-必需字段：
-
 ```text
-query_id,query_text,query_type,theme,region,city,exam,sampled_channel,sampled_at,notes
+query_id,query_text,query_type,query_purpose,discovery_channel,discovery_round,theme,region,city,exam,sampled_channel,sampled_at,status,notes
 ```
 
-- `query_type`：内部值 `generic` 或 `brand`，分别表示泛词查询或品牌词查询。
-- `sampled_channel`：例如内部值 `public-web` 或具体生成式搜索引擎名称；未实际采样不得填写。
-- 未执行的候选问题不要混入实际题池；如需保留，增加 `status` 并让校验只统计 `sampled`。
+- `query_type`：`generic|brand`。
+- `query_purpose`：`discovery|measurement|verification`。
+- `measurement` 必须是 `generic`；只有 `generic + measurement + sampled` 进入泛词分母。
+- `discovery_channel`：`user-query|exam-vertical|institutional|platform|expert-ip|entity-alias`；非 Discovery 可留空。
+- `discovery_round`：Discovery 使用 `1|2|3...`；其他可留空。
+- `status`：`planned|sampled|failed|skipped`。未实际执行的问题不得伪装为 sampled。
+
+## query_results.csv
+
+```text
+result_id,query_id,entity_id,result_rank,source_url,source_title,matched_name,observed_at,channel,matched,counts_as_measurement_hit,notes
+```
+
+- 每个实际结果一行；即使不能确认实体，也可暂时留空 `entity_id` 并在候选池标 unresolved。
+- `matched` 使用 `true|false`。
+- `counts_as_measurement_hit=true` 仅允许用于 matched 的 `generic + measurement + sampled` 结果。
+- 同一实体同一 Measurement 问题出现多次，泛词命中只计一次。
+
+## candidate_pool.csv
+
+```text
+candidate_id,entity_id,display_name,candidate_type,discovery_round,discovery_channel,discovery_query_id,discovery_result_id,first_seen_at,evidence_strength,status,merged_into_entity_id,exclusion_reason,notes
+```
+
+- 每条发现线索一行；同一实体可有多条线索。
+- `candidate_type` 建议 `institution|brand|teacher|company|other`。
+- 最终 `status`：`scored|evidence-insufficient|merged|excluded|unresolved`。
+- `merged` 必填 `merged_into_entity_id`；`excluded` 必填原因。
+- 地区全景中第二轮新发现的 scored/evidence-insufficient 实体数用于饱和度检查。
+
+## entities.csv
+
+```text
+entity_id,canonical_name,entity_type,aliases,legal_name,former_names,official_domain,region,parent_entity_id,entity_status,disambiguation_notes,source_ids,notes
+```
+
+- `entity_id` 使用稳定大写前缀和数字，例如 `I05`、`T012`、`C003`。
+- `entity_type`：`institution|brand|teacher|company|platform|exam|product|region`。
+- 多值字段用 `|` 分隔。
+- 短别名、常见词或历史同名必须填写 `disambiguation_notes`；不能仅靠名称相似自动合并。
+- `source_ids` 使用 `E001|E008`，不得写地区前缀。
+
+## entity_relations.csv
+
+```text
+relation_id,source_entity_id,relation_type,target_entity_id,relation_status,valid_from,valid_to,evidence_ids,confidence,notes
+```
+
+- `relation_type`：`operated-by|brand-of|teaches-at|founded-by|formerly-known-as|alias-of|offers|located-in|appears-on|partner-of|other`。
+- `relation_status` 建议 `current|historical|partner|multiple|unverified`。
+- `confidence`：`High|Medium|Low`。
+- 每条关系必须有证据编号；历史关系不得冒充当前关系。
 
 ## evidence.csv
 
-CSV 必需字段与 JSON 对象一致：
-
-```json
-{
-  "evidence_id": "E001",
-  "institution": "机构或实体名称",
-  "query": "触发该证据的问题",
-  "query_type": "generic|brand",
-  "source_title": "来源标题",
-  "source_url": "https://...",
-  "source_domain": "example.com",
-  "published_date": "YYYY-MM-DD 或 unknown",
-  "accessed_date": "YYYY-MM-DD",
-  "source_grade": "A1|A2|B|C",
-  "independent": true,
-  "claim_type": "fact|institution-claim|proxy-metric|analysis",
-  "concepts": ["概念1", "概念2"],
-  "notes": "核验、去重或局限说明"
-}
+```text
+evidence_id,entity_id,institution,query_id,query,query_type,source_title,source_url,source_domain,published_date,accessed_date,source_grade,independent,claim_type,concepts,duplicate_group,duplicate_reason,review_status,counting_scope,notes
 ```
 
-CSV 中 `concepts` 使用 JSON 数组字符串，例如 `["本地考情","基地班"]`；`independent` 使用 `true`/`false`。同一 URL 支持多个机构或多个不同陈述时可以多行，但必须说明，不得误计为多个独立来源。
+- `evidence_id` **必须匹配 `E\d+`**，如 `E001`；校验器与正文锚点只识别这一格式，禁止 `TJ01`、`SD01` 等自定义前缀。
+- `source_grade`：`A1|A2|B|C`；`independent`：`true|false`。
+- `claim_type`：`fact|institution-claim|proxy-metric|analysis`。
+- `concepts` 用 JSON 数组字符串。
+- 同 URL 复用时，每一行都填写相同 `duplicate_group`、具体 `duplicate_reason`、`review_status=reviewed`、`counting_scope`。
+- 合理保留：同一原页支持不同实体或不同关系，但独立域名只计一次。必须去重：同稿转载、站群换域名、同内容拆成多个计数。被排除计数的行用 `counting_scope=ignored`。
+
+标准复核说明示例：
+
+```text
+duplicate_group=DG03
+duplicate_reason=同一高校活动页同时支持机构参与事实与老师身份关系；保留两条陈述，但独立域名只计一次
+review_status=reviewed
+counting_scope=claim-only
+```
 
 ## scores.csv
 
-必需字段：
-
 ```text
-institution,role,query_coverage,entity_clarity,external_diversity,concept_ownership,freshness,total,tier,evidence_confidence,generic_hits,generic_queries,brand_hits,evidence_count,independent_domains,notes
+institution,entity_id,inclusion_basis,query_coverage,entity_clarity,external_diversity,concept_ownership,freshness,total,tier,evidence_confidence,generic_hits,generic_queries,brand_hits,evidence_count,independent_domains,notes
 ```
 
-- `role`：内部值 `Candidate`、`Specified` 或 `Benchmark`，分别表示调研发现、用户指定或对标补充。它不是机构等级，也不得影响评分。
-- `role` 保留在结构化数据中供复核；最终报告主排名表默认不显示。确需说明时使用中文列名“入选方式”，并映射为“调研发现 / 用户指定 / 对标补充”。
-- 五维上限依次为 30、25、20、15、10；`total` 必须是五项之和。
+- `inclusion_basis`：`discovered|user-requested|owned-forced|benchmark`，只表示入选来源，不影响分数。
+- 五维上限 30、25、20、15、10；`total` 为五项之和。
 - `tier`：S、A+、A、A-、B+、B、B-、C。
-- `evidence_confidence`：内部值 `High`、`Medium`、`Low`，报告显示为高、中、低。
-- `generic_hits` 不得大于 `generic_queries`；泛词覆盖度高分必须由泛词查询证据支持。
-- 没有足够证据的主体可以记录为内部值 `Evidence insufficient`，报告显示为“证据不足”，不要伪造精确分。
-- 地区调查中用户要求纳入的自有机构必须使用内部值 `Specified` 并保留，即使 `generic_hits=0`；不得把品牌词查询命中改算为泛词命中。
+- `evidence_confidence`：`High|Medium|Low`；报告显示高/中/低。
+- `generic_hits/generic_queries` 仅由 Measurement 派生，`brand_hits` 仅由 Verification 品牌词派生；Discovery 不进入任何命中指标。
+- `evidence_count` 与该 entity_id 的 evidence 行数一致；`independent_domains` 为去重后的独立域名数。
+
+## score_details.json
+
+根节点为数组，每个评分实体一项：
+
+```json
+{
+  "entity_id": "I001",
+  "dimensions": {
+    "query_coverage": {"score": 18, "reason": "5/20 个 Measurement 问题自然命中", "query_ids": ["QM01", "QM03"]},
+    "entity_clarity": {"score": 16, "reason": "官网可确认品牌、主体与课程", "evidence_ids": ["E001", "E004"]},
+    "external_diversity": {"score": 9, "reason": "2 个独立域名，外证有限", "evidence_ids": ["E006"]},
+    "concept_ownership": {"score": 8, "reason": "面试概念形成重复关联", "evidence_ids": ["E009"]},
+    "freshness": {"score": 7, "reason": "近 90 天有更新", "evidence_ids": ["E011"]}
+  }
+}
+```
+
+每维必须有分数、非空理由，并至少有 `evidence_ids` 或 `query_ids`。
 
 ## ip_entities.csv
-
-必需字段：
 
 ```text
 teacher_name,aliases,institution,relation_status,relation_period,subjects,products,regions,platforms,generic_hits,brand_hits,concepts,source_ids,evidence_confidence,notes
 ```
 
-- 每位进入正式分析或待核名单的老师一行；未发现达到最低证据门槛的老师时保留表头，并在报告说明“本次未发现可确认的 IP 名师”。
-- `relation_status` 使用内部值 `current`、`historical`、`partner`、`multiple` 或 `unverified`，报告分别显示“当前任职／历史关系／合作关系／多重关系／关系待核”。
-- `generic_hits` 只统计不含老师或机构名称的查询自然命中；人物品牌词结果计入 `brand_hits`。
-- `source_ids` 引用 `evidence.csv` 中可回溯的证据编号；关系待核时不得据此提高机构评分。
-- 粉丝量、播放量等可写入备注或单独代理指标，但不得直接折算为机构总分。
+关系状态使用 `current|historical|partner|multiple|unverified`。人物粉丝量、播放量只作代理指标，不能直接提高机构得分。
 
-## report.md 的机器可检字段
+## warning_resolutions.csv
 
-建议在正文开头保留以下明确文本，便于人工和脚本检查：
+```text
+issue_code,issue_key,resolution,status,reviewed_by,reviewed_at
+```
 
-```markdown
+- 只处理允许人工判断的 warning，不能压制 error。
+- `issue_key` 必须与校验输出完全一致；`status=reviewed`，且结论、复核人、复核时间均非空。
+- 再跑 `--strict` 后，对应 warning 会转为 info；缺字段或泛化按 code 全部放行均无效。
+
+## report.md 机器字段
+
+正文开头逐行保留：
+
+```text
+Schema版本：2.0
+Skill版本：2.0
 观察日期：YYYY-MM-DD
+研究模式：地区全景（regional-landscape）
 研究范围：...
-采样模式：公开网页代理观察 | 多引擎实测
+采样模式：公开网页代理观察
+Discovery问题数：N
+Measurement问题数：N
+Verification问题数：N
+Discovery渠道覆盖：user-query|exam-vertical|institutional|platform|expert-ip|entity-alias
+漏项审计轮数：N
+候选记录数：N
+第一轮候选实体数：N
+第二轮新增实体数：N
+去重后实体数：N
+正式评分数：N
+待观察/证据不足数：N
+证据数：N
 IP名师调查：是
 IP名师样本数：N
-自有机构纳入：是 | 否
-自有机构名称：...  # 选择“是”时必填
-证据置信度：高 | 中 | 低
+自有机构纳入：是|否
+自有机构名称：...  # 是时必填
+第二轮新增占比说明：...  # 第二轮新增可评估实体超过 35% 时必填
 免责声明：GEO 观察指数不代表教学实力、市场份额或大模型官方推荐排名。
 ```
 
-每个重要事实在同段附来源链接，或使用能回溯到 `evidence.csv` 的脚注/证据编号。强结论必须有证据等级和置信度支撑。
+机器字段必须与 CSV/JSON 一致。正文重要事实用 `[E001]` 或 Markdown 来源链接；HTML 生成器会把证据编号链接到自动附加的证据索引。
 
-`自有机构纳入`是前置问询的审计字段。选择“否”时不得凭历史信息加入内部“用户指定”样本；选择“是”时必须记录准确名称，并在 `scores.csv` 中保留对应内部样本值。
+## 兼容说明
 
-## 脚本接口
-
-- `python3 scripts/score_geo.py scores-input.json --pretty`
-- `python3 scripts/score_geo.py --self-test`
-- `python3 scripts/validate_run.py run-dir --draft`（仅制作过程）
-- `python3 scripts/generate_report_html.py run-dir`
-- `python3 scripts/validate_run.py run-dir --strict`
-- `python3 scripts/validate_run.py --self-test`
-- `python3 scripts/generate_report_html.py --self-test`
-
-`validate_run.py` 默认要求存在结构完整的 `report.html`；只有制作过程可用 `--draft` 暂时跳过 HTML 门禁，草稿校验不得作为完成或交付依据。校验通过只表示结构和主要逻辑约束通过，不能替代人工打开来源、确认来源支持陈述、核验时间窗口和复查对标合理性。
-
-## HTML 交付
-
-`report.html` 必须使用 `generate_report_html.py` 从最终 `report.md` 生成，包含完整正文和必要样式，并在交付前用浏览器检查。至少核对中文字体、标题层级、宽表格横向滚动、来源链接、打印分页、裁切、重叠和黑块。Markdown 或 CSV 不能代替默认 HTML 最终交付。
+没有 `Schema版本：2.0` 的旧运行目录按 v1.1 兼容模式读取，并输出 `legacy-schema` 信息而非研究错误；它不会自动升级为 v2。迁移规则见 [migration-v2.md](migration-v2.md)。

@@ -1,0 +1,16 @@
+query_id,query_text,query_type,query_purpose,discovery_channel,discovery_round,theme,region,city,exam,sampled_channel,sampled_at,status,notes
+QD01,天津公考培训机构有哪些,generic,discovery,user-query,1,区域发现,天津市,,公务员,public-web,2026-09-09T03:00:00+08:00,sampled,
+QD02,天津事业单位培训机构公考,generic,discovery,exam-vertical,1,考试垂类,天津市,,事业单位,public-web,2026-09-09T03:01:00+08:00,sampled,
+QD03,site:gov.cn 天津 公务员 培训 机构,generic,discovery,institutional,1,机构性来源,天津市,,公务员,public-web,2026-09-09T03:02:00+08:00,sampled,
+QD04,site:edu.cn 天津 公考 讲座 老师,generic,discovery,institutional,1,高校来源,天津市,,公务员,public-web,2026-09-09T03:03:00+08:00,sampled,
+QD05,天津本土公考小班培训工作室,generic,discovery,user-query,1,本土小机构,天津市,,公务员,public-web,2026-09-09T03:04:00+08:00,sampled,发现津极公考
+QD06,天津公考面试老师机构,generic,discovery,expert-ip,1,名师线索,天津市,,公务员,public-web,2026-09-09T03:05:00+08:00,sampled,
+QD07,天津公考机构B站老师,generic,discovery,platform,2,平台补漏,天津市,,公务员,public-web,2026-09-09T03:06:00+08:00,sampled,
+QD08,天津公考培训招聘讲师,generic,discovery,institutional,2,招聘反查,天津市,,公务员,public-web,2026-09-09T03:07:00+08:00,sampled,自然发现津仕
+QD09,天津公考培训简称曾用名公司名,generic,discovery,entity-alias,2,别名补漏,天津市,,公务员,public-web,2026-09-09T03:08:00+08:00,sampled,未发现北宋或北学优仕
+QD10,"""北宋公考"" 天津",brand,discovery,entity-alias,2,验收定向补测,天津市,,公务员,public-web,2026-09-09T03:09:00+08:00,sampled,为验证已知验收条件追加；不算自然召回
+QM01,天津市考机构测评本土公考,generic,measurement,,,统一测量,天津市,,公务员,public-web,2026-09-09T03:10:00+08:00,sampled,
+QM02,天津考公网课机构推荐老师,generic,measurement,,,统一测量,天津市,,公务员,public-web,2026-09-09T03:11:00+08:00,sampled,
+QV01,"""津仕培训学校（天津）有限公司"" 公考",brand,verification,,,主体核验,天津市,,公务员,public-web,2026-09-09T03:12:00+08:00,sampled,
+QV02,"""天津北学优仕培训学校有限公司""",brand,verification,,,主体核验,天津市,,公务员,public-web,2026-09-09T03:13:00+08:00,sampled,
+QV03,"""津极公考"" 天津",brand,verification,,,主体核验,天津市,,公务员,public-web,2026-09-09T03:14:00+08:00,sampled,

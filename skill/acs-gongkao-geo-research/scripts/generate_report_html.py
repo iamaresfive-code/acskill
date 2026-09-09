@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import html
 import re
 import sys
@@ -14,13 +15,14 @@ from pathlib import Path
 TABLE_SEPARATOR_RE = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$")
 LINK_RE = re.compile(r"(!?)\[([^\]]+)\]\(([^)\s]+)(?:\s+[\"']([^\"']+)[\"'])?\)")
 CODE_RE = re.compile(r"`([^`]+)`")
+EVIDENCE_REF_RE = re.compile(r"\[(E\d+)\]")
 
 
 STYLE = """
 :root { color-scheme: light; --ink:#172033; --muted:#657086; --line:#dbe2ec; --brand:#225ea8; --soft:#f4f7fb; }
 * { box-sizing: border-box; }
 body { margin:0; color:var(--ink); background:#eef2f7; font:16px/1.75 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif; }
-main { width:min(1120px,calc(100% - 32px)); margin:32px auto; padding:48px 56px; background:white; border-radius:16px; box-shadow:0 10px 35px rgba(29,43,68,.08); }
+main { width:min(1040px,calc(100% - 96px)); margin:48px auto; padding:56px 72px; background:white; border-radius:16px; box-shadow:0 10px 35px rgba(29,43,68,.08); }
 h1,h2,h3,h4 { line-height:1.35; margin:1.45em 0 .65em; color:#10233f; }
 h1 { margin-top:0; font-size:2rem; border-bottom:3px solid var(--brand); padding-bottom:.4em; }
 h2 { font-size:1.5rem; border-bottom:1px solid var(--line); padding-bottom:.3em; }
@@ -38,8 +40,14 @@ th { position:sticky; top:0; background:#eaf1f8; white-space:nowrap; }
 tr:nth-child(even) td { background:#fafbfd; }
 img { max-width:100%; height:auto; }
 .meta { margin-top:36px; padding-top:14px; border-top:1px solid var(--line); color:var(--muted); font-size:.9rem; }
+.machine-fields { display:grid; grid-template-columns:repeat(auto-fit,minmax(270px,1fr)); gap:4px 18px; margin:.9em 0; padding:12px 16px; border-left:4px solid var(--brand); background:var(--soft); color:#334158; }
+.machine-fields > div { min-width:0; overflow-wrap:anywhere; }
+.evidence-ref { font-size:.86em; white-space:nowrap; }
+.evidence-index td:first-child { white-space:nowrap; font-weight:600; }
+@media (max-width:960px) { main { width:calc(100% - 32px); margin:16px auto; padding:40px 36px; } }
 @media (max-width:720px) { main { width:100%; margin:0; padding:28px 20px; border-radius:0; } }
-@media print { body { background:white; font-size:11pt; } main { width:auto; margin:0; padding:0; box-shadow:none; } a { color:inherit; text-decoration:none; } h1,h2,h3 { break-after:avoid; } table,blockquote,pre { break-inside:avoid; } }
+@page { size:A4 portrait; margin:12mm; }
+@media print { body { background:white; font-size:10pt; } main { width:auto; margin:0; padding:0; box-shadow:none; } a { color:inherit; text-decoration:none; } h1,h2,h3 { break-after:avoid; } blockquote,pre { break-inside:avoid; } .machine-fields { grid-template-columns:1fr 1fr; padding:7px 10px; break-inside:avoid; } .table-wrap { overflow:visible; border-radius:0; } table { min-width:0; width:100%; table-layout:auto; font-size:7.5pt; break-inside:auto; } tr { break-inside:avoid; } th,td { padding:3px 4px; overflow-wrap:anywhere; word-break:break-word; } th { position:static; white-space:normal; } }
 """.strip()
 
 
@@ -61,6 +69,7 @@ def inline_markup(text: str) -> str:
         return f'<a href="{url}"{title_attr}>{label}</a>'
 
     escaped = LINK_RE.sub(replace_link, escaped)
+    escaped = EVIDENCE_REF_RE.sub(r'<a class="evidence-ref" href="#evidence-\1">[\1]</a>', escaped)
     escaped = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", escaped)
     escaped = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"<em>\1</em>", escaped)
     escaped = re.sub(r"~~([^~]+)~~", r"<del>\1</del>", escaped)
@@ -85,7 +94,15 @@ def markdown_to_html(markdown: str) -> str:
 
     def flush_paragraph() -> None:
         if paragraph:
-            output.append("<p>" + inline_markup(" ".join(part.strip() for part in paragraph)) + "</p>")
+            parts = [part.strip() for part in paragraph]
+            is_machine_fields = len(parts) >= 2 and all(
+                0 < min((position for position in (part.find("："), part.find(":")) if position >= 0), default=10_000) <= 30
+                for part in parts
+            )
+            if is_machine_fields:
+                output.append('<div class="machine-fields">' + "".join(f"<div>{inline_markup(part)}</div>" for part in parts) + "</div>")
+            else:
+                output.append("<p>" + inline_markup(" ".join(parts)) + "</p>")
             paragraph.clear()
 
     def close_list() -> None:
@@ -161,8 +178,26 @@ def extract_title(markdown: str, fallback: str) -> str:
     return fallback
 
 
-def render_document(markdown: str, title: str) -> str:
+def evidence_appendix(rows: list[dict[str, str]]) -> str:
+    if not rows:
+        return ""
+    parts = ['<section class="evidence-index"><h2>证据索引</h2>', '<div class="table-wrap"><table><thead><tr><th>编号</th><th>实体</th><th>来源</th><th>等级</th><th>访问日期</th></tr></thead><tbody>']
+    for row in rows:
+        evidence_id = html.escape(row.get("evidence_id", "").strip())
+        institution = html.escape(row.get("institution", "").strip())
+        title = html.escape(row.get("source_title", "").strip())
+        url = html.escape(row.get("source_url", "").strip(), quote=True)
+        grade = html.escape(row.get("source_grade", "").strip())
+        accessed = html.escape(row.get("accessed_date", "").strip())
+        source = f'<a href="{url}">{title or url}</a>' if url else title
+        parts.append(f'<tr id="evidence-{evidence_id}"><td>{evidence_id}</td><td>{institution}</td><td>{source}</td><td>{grade}</td><td>{accessed}</td></tr>')
+    parts.append("</tbody></table></div></section>")
+    return "\n".join(parts)
+
+
+def render_document(markdown: str, title: str, evidence_rows: list[dict[str, str]] | None = None) -> str:
     body = markdown_to_html(markdown)
+    appendix = evidence_appendix(evidence_rows or [])
     return f"""<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -173,7 +208,8 @@ def render_document(markdown: str, title: str) -> str:
 </head>
 <body><main>
 {body}
-<p class="meta">本报告由公考机构 GEO 调研 Skill v1.1 生成；请以报告中的观察日期、样本范围和证据链接为准。</p>
+{appendix}
+<p class="meta">本报告由公考机构 GEO 调研 Skill v2.0 生成；请以报告中的观察日期、样本范围和证据链接为准。</p>
 </main></body>
 </html>
 """
@@ -186,15 +222,18 @@ def resolve_paths(source: Path, output: Path | None) -> tuple[Path, Path]:
 
 
 def self_test() -> None:
-    sample = "# 示例报告\n\n观察日期：2026-09-09\n\n| 机构 | 分数 |\n|---|---:|\n| 甲机构 | 80 |\n\n- [来源](https://example.com)\n"
-    rendered = render_document(sample, "示例报告")
-    required = ("<html lang=\"zh-CN\">", "<h1>示例报告</h1>", "<table>", "https://example.com", "Skill v1.1")
+    sample = "# 示例报告\n\n观察日期：2026-09-09\n报告版本：2.0\n\n| 机构 | 分数 |\n|---|---:|\n| 甲机构 | 80 |\n\n结论 [E001]。\n"
+    evidence = [{"evidence_id":"E001","institution":"甲机构","source_title":"来源","source_url":"https://example.com","source_grade":"A1","accessed_date":"2026-09-09"}]
+    rendered = render_document(sample, "示例报告", evidence)
+    required = ("<html lang=\"zh-CN\">", "<h1>示例报告</h1>", "<table>", "https://example.com", "Skill v2.0", 'class="machine-fields"', 'href="#evidence-E001"', 'id="evidence-E001"', "min-width:0")
     assert all(fragment in rendered for fragment in required)
     with tempfile.TemporaryDirectory(prefix="gongkao-geo-html-") as temp:
         run = Path(temp)
         (run / "report.md").write_text(sample, encoding="utf-8")
+        with (run / "evidence.csv").open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=list(evidence[0])); writer.writeheader(); writer.writerows(evidence)
         report_md, report_html = resolve_paths(run, None)
-        report_html.write_text(render_document(report_md.read_text(encoding="utf-8"), extract_title(sample, "报告")), encoding="utf-8")
+        report_html.write_text(render_document(report_md.read_text(encoding="utf-8"), extract_title(sample, "报告"), evidence), encoding="utf-8")
         assert report_html.is_file() and report_html.stat().st_size > 500
 
 
@@ -225,7 +264,12 @@ def main() -> int:
         return 1
     markdown = report_md.read_text(encoding="utf-8")
     title = args.title or extract_title(markdown, report_md.stem)
-    report_html.write_text(render_document(markdown, title), encoding="utf-8")
+    evidence_rows: list[dict[str, str]] = []
+    evidence_path = report_md.with_name("evidence.csv")
+    if evidence_path.is_file():
+        with evidence_path.open("r", encoding="utf-8-sig", newline="") as handle:
+            evidence_rows = list(csv.DictReader(handle))
+    report_html.write_text(render_document(markdown, title, evidence_rows), encoding="utf-8")
     print(f"已生成：{report_html}")
     return 0
 
