@@ -7,7 +7,7 @@
 <style>:root { color-scheme: light; --ink:#172033; --muted:#657086; --line:#dbe2ec; --brand:#225ea8; --soft:#f4f7fb; }
 * { box-sizing: border-box; }
 body { margin:0; color:var(--ink); background:#eef2f7; font:16px/1.75 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif; }
-main { width:min(1120px,calc(100% - 32px)); margin:32px auto; padding:48px 56px; background:white; border-radius:16px; box-shadow:0 10px 35px rgba(29,43,68,.08); }
+main { width:min(1040px,calc(100% - 96px)); margin:48px auto; padding:56px 72px; background:white; border-radius:16px; box-shadow:0 10px 35px rgba(29,43,68,.08); }
 h1,h2,h3,h4 { line-height:1.35; margin:1.45em 0 .65em; color:#10233f; }
 h1 { margin-top:0; font-size:2rem; border-bottom:3px solid var(--brand); padding-bottom:.4em; }
 h2 { font-size:1.5rem; border-bottom:1px solid var(--line); padding-bottom:.3em; }
@@ -29,6 +29,7 @@ img { max-width:100%; height:auto; }
 .machine-fields > div { min-width:0; overflow-wrap:anywhere; }
 .evidence-ref { font-size:.86em; white-space:nowrap; }
 .evidence-index td:first-child { white-space:nowrap; font-weight:600; }
+@media (max-width:960px) { main { width:calc(100% - 32px); margin:16px auto; padding:40px 36px; } }
 @media (max-width:720px) { main { width:100%; margin:0; padding:28px 20px; border-radius:0; } }
 @page { size:A4 portrait; margin:12mm; }
 @media print { body { background:white; font-size:10pt; } main { width:auto; margin:0; padding:0; box-shadow:none; } a { color:inherit; text-decoration:none; } h1,h2,h3 { break-after:avoid; } blockquote,pre { break-inside:avoid; } .machine-fields { grid-template-columns:1fr 1fr; padding:7px 10px; break-inside:avoid; } .table-wrap { overflow:visible; border-radius:0; } table { min-width:0; width:100%; table-layout:auto; font-size:7.5pt; break-inside:auto; } tr { break-inside:avoid; } th,td { padding:3px 4px; overflow-wrap:anywhere; word-break:break-word; } th { position:static; white-space:normal; } }</style>
