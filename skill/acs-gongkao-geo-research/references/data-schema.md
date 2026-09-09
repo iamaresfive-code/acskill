@@ -1,229 +1,214 @@
-# GEO 调研数据规范 v2.1
+# GEO 调研数据规范 v2.2
 
-所有 CSV 使用 UTF-8；日期 `YYYY-MM-DD`，时间 ISO 8601。新运行必须声明 `Schema版本：2.1`。
+所有新 Run：
 
-## 标准运行目录
-
-```text
-run-dir/
-├── run_metadata.json
-├── queries.csv
-├── query_results.csv
-├── discovery_coverage.csv
-├── candidate_pool.csv
-├── entities.csv
-├── entity_relations.csv
-├── evidence.csv
-├── scores.csv
-├── score_details.json
-├── ip_entities.csv
-├── warning_resolutions.csv       # 有人工处置 warning 时可选
-├── report_model.json
-├── report.md                     # 人类可读正文源，不是正式交付物
-├── charts/
-│   ├── geo-score-ranking.svg
-│   ├── authority-recall-matrix.svg
-│   ├── dimension-heatmap.svg
-│   └── candidate-funnel.svg
-└── deliverables/
-    └── report.{docx|pdf|html}     # 仅用户选择格式
+```json
+{"schema_version":"2.2","skill_version":"2.2","official_output_format":"docx"}
 ```
 
 ## run_metadata.json
 
-最少字段：
+核心字段：
 
-```json
-{
-  "schema_version": "2.1",
-  "skill_version": "2.1",
-  "run_status": "ready|preflight-incomplete|researching|frozen|rendered|complete",
-  "region_confirmed": true,
-  "specified_entities_confirmed": true,
-  "output_format_confirmed": true,
-  "requested_region": "广东",
-  "normalized_region": "广东省",
-  "region_type": "province|municipality|city|custom-region",
-  "research_scope": ["广东省"],
-  "requested_entities": [],
-  "requested_output_format": ["pdf"],
-  "observation_date": "2026-09-09",
-  "sampling_mode": "public-web-proxy",
-  "candidate_pool_frozen": true,
-  "semantic_coverage_gate": true,
-  "saturation_gate": true
-}
+- requested_region / normalized_region / research_scope
+- seed_entities
+- allow_discovery_supplement
+- research_mode: scoped-geo-landscape | blind-discovery-scan
+- market_universe_confirmed
+- measurement_allowed
+- sampling_mode: multi-engine | limited-multi-engine | single-engine | asset-audit-only
+- ai_engines_expected
+- observation_date
+
+## market_universe.csv
+
+```text
+entity_id
+canonical_name
+aliases
+entity_type
+user_seed
+discovery_origin
+market_scope
+operating_region
+market_role
+activity_status
+platform_native
+salience_basis
+universe_status
+confirmation_status
+notes
 ```
 
-`requested_output_format` 为数组是为了支持用户明确要求多个格式；通常只含一项。
+`market_scope`: national / regional / local / unknown。
+
+`market_role`: national-benchmark / local-core / local-active / expert-ip / historical / observation / unclassified。
 
 ## queries.csv
 
 ```text
-query_id,query_text,query_type,query_purpose,measurement_target,discovery_channel,discovery_round,semantic_theme,theme,region,city,exam,sampled_channel,sampled_at,status,notes
+query_id
+query_text
+query_group
+measurement_target   # institution | ip
+region
+status               # planned | sampled | skipped
 ```
 
-- `query_type`: `generic|brand`
-- `query_purpose`: `discovery|measurement|verification`
-- `measurement_target`: `institution|ip`；非 Measurement 留空
-- `measurement` 必须 `query_type=generic`
-- 机构 Recall 分母只含 `generic + measurement + institution + sampled`
-- IP Recall 分母只含 `generic + measurement + ip + sampled`
-- `discovery_channel`: `user-query|exam-vertical|institutional|platform|expert-ip|entity-alias`
-- `discovery_round`: `1|2|3...`
-- `semantic_theme`: 当地真实语义主题，不得写死天津
-- `status`: `planned|sampled|failed|skipped`
+## ai_answers.jsonl
 
-## query_results.csv
+每行一个 JSON：
+
+```json
+{
+  "answer_id":"A001",
+  "query_id":"M01",
+  "engine":"ChatGPT",
+  "model":"...",
+  "sampled_at":"ISO8601",
+  "response_text":"完整回答",
+  "citations":[],
+  "notes":""
+}
+```
+
+## ai_mentions.csv
 
 ```text
-result_id,query_id,entity_id,result_rank,source_url,source_title,matched_name,observed_at,channel,matched,counts_as_measurement_hit,notes
+mention_id
+answer_id
+entity_id
+mention_rank
+mentioned_name
+match_method          # explicit-name | verified-alias | citation-only
+top3
+first_mention
+entity_correct
+citation_linked
+concepts
+notes
 ```
 
-`counts_as_measurement_hit=true` 只有在对应 Query 是合法 Measurement 且 `matched=true` 时才可使用。
+只有 explicit-name / verified-alias 进入 Nomination。
 
-## discovery_coverage.csv
+## serp_results.csv
+
+一行就是一个真实 Result Item：
 
 ```text
-region,discovery_channel,semantic_theme,required,query_count,result_count,eligible_candidates_found,status,notes
+result_id
+query_id
+engine
+rank
+url
+title
+snippet
+sampled_at
 ```
 
-- `required`: `true|false`
-- `status`: `covered|no-result-reviewed|partial|missing|not-applicable`
-- Gate A 只允许全部 required 行为 `covered|no-result-reviewed`
-- `no-result-reviewed` 表示该主题已实际检索、没有有效候选，但研究者完成了结果复核；不能用来跳过查询
+同一 query + engine + rank 只能一行。
 
-## candidate_pool.csv
+## serp_mentions.csv
+
+只允许 title/snippet 的显式提及：
 
 ```text
-candidate_id,entity_id,display_name,candidate_type,discovery_round,discovery_channel,discovery_query_id,discovery_result_id,first_seen_at,evidence_strength,user_specified,status,merged_into_entity_id,exclusion_reason,notes
+serp_mention_id
+result_id
+entity_id
+matched_text
+match_surface         # title | snippet | both
+notes
 ```
 
-最终状态：
+## page_mentions.csv
 
-`scored|evidence-insufficient|merged|excluded|unresolved`
-
-- `user_specified=true` 的主体不得 `excluded` 后静默消失；如确认是跨区/非公考噪声，优先保留为 `unresolved` 或 `merged` 并解释
-- `merged` 必填 `merged_into_entity_id`
-- `excluded` 必填 `exclusion_reason`
-
-## entities.csv
+网页正文内部提及：
 
 ```text
-entity_id,canonical_name,entity_type,aliases,legal_name,former_names,brand_name,official_domain,official_account,region,parent_entity_id,entity_status,disambiguation_notes,source_ids,notes
+page_mention_id
+result_id
+entity_id
+matched_text
+page_url
+notes
 ```
 
-`entity_type`: `institution|brand|teacher|company|platform|exam|product|region`
-
-短别名、常见词、历史同名必须写 `disambiguation_notes`。
-
-## entity_relations.csv
-
-```text
-relation_id,source_entity_id,relation_type,target_entity_id,relation_status,valid_from,valid_to,evidence_ids,confidence,notes
-```
-
-关系类型可用：
-
-`operated-by|brand-of|teaches-at|founded-by|formerly-known-as|alias-of|offers|located-in|appears-on|partner-of|other`
+它不能进入 AI Nomination 或 SERP Result Item 计数。
 
 ## evidence.csv
 
 ```text
-evidence_id,entity_id,institution,query_id,query,query_type,source_title,source_url,source_domain,published_date,accessed_date,source_grade,independent,claim_type,concepts,duplicate_group,duplicate_reason,review_status,counting_scope,notes
+evidence_id
+entity_id
+source_url
+source_title
+source_grade
+source_owner          # owned | independent | platform | unknown
+claim_type
+counting_scope
+notes
 ```
 
-- `evidence_id` 必须匹配 `E\d+`
-- `source_grade`: `A1|A2|B|C`
-- `claim_type`: `fact|institution-claim|proxy-metric|analysis`
-- 同 URL 多用途复用必须结构化记录 duplicate 字段
-
-## scores.csv
+## rechecks.csv
 
 ```text
-institution,entity_id,inclusion_basis,query_coverage,entity_clarity,external_diversity,concept_ownership,freshness,total,tier,evidence_confidence,generic_hits,generic_queries,brand_hits,evidence_count,independent_domains,authority_index,competition_route,notes
+recheck_id
+sample_type           # ai-answer | serp
+source_id
+first_decision
+second_decision
+disagreement
+resolution
+recheck_by
+notes
 ```
 
-- 五维权重不变：30/25/20/15/10
-- `inclusion_basis`: `discovered|user-requested|owned-forced|benchmark`
-- `generic_hits/generic_queries` 只来自机构 Measurement
-- `authority_index` 0–100，独立于 GEO Score，算法应透明并可复算
-- `competition_route` 为报告解释标签，不参与加分
+## asset_inputs.csv / asset_scores.csv
 
-## score_details.json
-
-每个评分实体记录五维分数、理由、证据或 Measurement Query ID；不得只有总分。
-
-## ip_entities.csv
+Asset Inputs 维度：
 
 ```text
-teacher_name,entity_id,aliases,institution,relation_status,relation_period,subjects,products,regions,platforms,ip_hits,ip_queries,ip_recall,entity_confidence,institution_relation,subject_binding,concept_ownership,evidence_health,brand_hits,source_ids,evidence_confidence,notes
+entity_clarity
+regional_semantic_density
+open_web_assets
+external_authority
+content_depth_freshness
+data_tool_assets
+platform_coverage
 ```
 
-只有实际执行 IP Measurement 时 `ip_queries>0`。没有 IP Measurement 时不得称为 IP GEO Ranking。
+`score_assets.py` 派生：asset_readiness / asset_tier / evidence_count / independent_domains / owned_source_dependency。
 
-## warning_resolutions.csv
+## concept_ownership.csv
 
 ```text
-issue_code,issue_key,resolution,status,reviewed_by,reviewed_at
+concept
+entity_id
+canonical_name
+strength
+evidence_ids
+notes
 ```
-
-只允许处理 warning，不得压制 error。
 
 ## report_model.json
 
-统一正式报告内容层，建议包含：
+必须有：
 
-```json
-{
-  "meta": {},
-  "kpis": {},
-  "executive_summary": [],
-  "ranking": [],
-  "authority_recall": [],
-  "scorecards": [],
-  "diagnoses": [],
-  "query_occupancy": [],
-  "concept_gaps": [],
-  "entry_strategy": [],
-  "plan_90_days": [],
-  "monthly_dashboard": [],
-  "charts": {},
-  "appendix": {}
-}
-```
+- market_universe
+- ai_visibility
+- asset_readiness
+- concept_map
+- observation_group
+- appendix
+- kpis
 
-Renderer 只读取 Report Model 与本次 Run 的已生成资产，不再各自重新生成研究结论。
+## deliverables/
 
-## 报告机器审计字段
-
-这些字段应放在 Appendix / Research Audit，而不是封面或 Executive Summary：
+v2.2 唯一正式交付：
 
 ```text
-Schema版本：2.1
-Skill版本：2.1
-观察日期：YYYY-MM-DD
-研究模式：...
-研究范围：...
-采样模式：...
-Discovery问题数：N
-机构Measurement问题数：N
-IP Measurement问题数：N
-Verification问题数：N
-Discovery渠道覆盖：...
-Discovery Semantic Theme数：N
-候选记录数：N
-独立机构候选：N
-实体图谱节点：N
-具备评估条件：N
-正式评分：N
-IP实体：N
-证据数：N
-scored：N
-证据不足：N
-merged：N
-excluded：N
-unresolved：N
+deliverables/report.docx
 ```
 
-注意：“实体图谱节点”不能写成“机构数量”。
+正式目录不得同时生成 report.pdf / report.html。

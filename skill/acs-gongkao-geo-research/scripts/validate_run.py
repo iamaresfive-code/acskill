@@ -1,229 +1,165 @@
 #!/usr/bin/env python3
-"""GEO v2.1.1 validator: research integrity + report contract + selected-renderer checks."""
+"""GEO v2.2 validator: preflight, Market Universe, sampling integrity, blind recheck, report contract, DOCX-only delivery."""
 from __future__ import annotations
 import argparse,csv,json,re,zipfile
-from collections import Counter,defaultdict
+from collections import defaultdict
 from dataclasses import dataclass,asdict
 from pathlib import Path
-from urllib.parse import urlparse
 
-WEIGHTS={"query_coverage":30.0,"entity_clarity":25.0,"external_diversity":20.0,"concept_ownership":15.0,"freshness":10.0}
-TRUE={"1","true","yes","y","是"};PURPOSES={"discovery","measurement","verification"};TARGETS={"institution","ip"};DISCOVERY_CHANNELS={"user-query","exam-vertical","institutional","platform","expert-ip","entity-alias"};FINAL_STATUSES={"scored","evidence-insufficient","ip-measured","merged","excluded","unresolved"};FORMATS={"docx","pdf","html"}
-LOCAL_GROUPS=("local-institution-ecosystem","local-expert-ip","platform-native-ip")
-
+TRUE={"1","true","yes","y","是"};VERSION="2.2"
+VALID_SCOPES={"national","regional","local","unknown"};VALID_ROLES={"national-benchmark","local-core","local-active","expert-ip","historical","observation","unclassified"};VALID_UNIVERSE={"included","observation","excluded","unresolved"};VALID_TARGETS={"institution","ip"};VALID_MATCH={"explicit-name","verified-alias","citation-only"}
 @dataclass
-class Issue:
-    level:str;code:str;message:str;key:str=""
+class Issue:level:str;code:str;message:str;key:str=""
 
-def _csv(path:Path,issues,label,required:set[str]):
-    if not path.is_file():issues.append(Issue('error','missing-'+label,f'缺少 {path.name}'));return [],set()
+def rcsv(path:Path,issues,label,required=()):
+    if not path.is_file():issues.append(Issue("error","missing-"+label,f"缺少 {path.name}"));return [],set()
     try:
-        with path.open('r',encoding='utf-8-sig',newline='') as f:r=csv.DictReader(f);rows=list(r);fields=set(r.fieldnames or [])
-    except Exception as e:issues.append(Issue('error','read-'+label,f'{path.name} 读取失败：{e}'));return [],set()
-    miss=required-fields
-    if miss:issues.append(Issue('error',label+'-schema',f'{path.name} 缺少字段：{", ".join(sorted(miss))}'))
+        with path.open("r",encoding="utf-8-sig",newline="") as f:r=csv.DictReader(f);rows=list(r);fields=set(r.fieldnames or [])
+    except Exception as e:issues.append(Issue("error","read-"+label,f"{path.name} 读取失败：{e}"));return [],set()
+    miss=set(required)-fields
+    if miss:issues.append(Issue("error",label+"-schema",f"{path.name} 缺字段：{', '.join(sorted(miss))}"))
     return rows,fields
 
-def _json(path:Path,issues,label):
-    if not path.is_file():issues.append(Issue('error','missing-'+label,f'缺少 {path.name}'));return {}
-    try:return json.loads(path.read_text(encoding='utf-8'))
-    except Exception as e:issues.append(Issue('error','invalid-'+label,f'{path.name} JSON 无效：{e}'));return {}
-def _num(v):
+def rjson(path:Path,issues,label,default=None):
+    if not path.is_file():issues.append(Issue("error","missing-"+label,f"缺少 {path.name}"));return {} if default is None else default
+    try:return json.loads(path.read_text(encoding="utf-8"))
+    except Exception as e:issues.append(Issue("error","invalid-"+label,f"{path.name} JSON 无效：{e}"));return {} if default is None else default
+
+def rjsonl(path:Path,issues,label):
+    if not path.is_file():issues.append(Issue("error","missing-"+label,f"缺少 {path.name}"));return []
+    out=[]
+    try:
+        for n,line in enumerate(path.read_text(encoding="utf-8").splitlines(),1):
+            if line.strip():obj=json.loads(line);obj["_line"]=n;out.append(obj)
+    except Exception as e:issues.append(Issue("error","invalid-"+label,f"{path.name} JSONL 无效：{e}"))
+    return out
+
+def num(v):
     try:return float(v)
     except:return None
-def _tier(t):
-    if t>=85:return'S'
-    if t>=80:return'A+'
-    if t>=70:return'A'
-    if t>=65:return'A-'
-    if t>=60:return'B+'
-    if t>=50:return'B'
-    if t>=45:return'B-'
-    return'C'
-def _domain(url):return urlparse(url or '').netloc.lower().removeprefix('www.')
-def _norm_name(v):return re.sub(r"[\s·•・（）()\-—_]+","",v or "").casefold()
-def _theme_group(theme):
-    t=(theme or '').strip().lower()
-    if 'local-institution' in t or '本土机构生态' in t:return 'local-institution-ecosystem'
-    if 'local-expert' in t or '本土ip' in t or '本土专家' in t:return 'local-expert-ip'
-    if 'platform-native' in t or '平台型ip' in t or '平台原生ip' in t:return 'platform-native-ip'
-    return ''
 
-def _renderer_check(run,fmt,issues,model):
-    path=run/'deliverables'/f'report.{fmt}'
-    if not path.is_file():return
-    required_labels=['本土候选观察组','IP / Expert GEO','Appendix / Research Audit']
-    if fmt=='html':
-        text=path.read_text(encoding='utf-8',errors='ignore')
-        for marker in ['data-section="observation-group"','data-section="ip-expert"','data-section="appendix-audit"']:
-            if marker not in text:issues.append(Issue('error','renderer-section-missing',f'HTML 未消费 Report Model 区块：{marker}',marker))
-        compact=re.sub(r'\s+','',text.lower())
-        if '.chartsvg{' not in compact or 'max-width:100%!important' not in compact:issues.append(Issue('error','html-chart-overflow-risk','HTML 缺少 SVG 响应式防溢出规则'))
-        if 'overflow-x:auto' not in compact:issues.append(Issue('error','html-table-overflow-risk','HTML 缺少宽表横向滚动容器'))
-    elif fmt=='docx':
-        try:
-            with zipfile.ZipFile(path) as z:text=z.read('word/document.xml').decode('utf-8','ignore')
-            for label in required_labels:
-                if label not in text:issues.append(Issue('error','renderer-section-missing',f'DOCX 缺少章节：{label}',label))
-        except Exception as e:issues.append(Issue('error','invalid-docx',f'DOCX 无法结构校验：{e}'))
-    elif fmt=='pdf':
-        try:
-            try:from pypdf import PdfReader
-            except Exception:from PyPDF2 import PdfReader
-            text='\n'.join((p.extract_text() or '') for p in PdfReader(str(path)).pages)
-            for label in required_labels:
-                if label not in text:issues.append(Issue('error','renderer-section-missing',f'PDF 缺少章节：{label}',label))
-        except Exception as e:issues.append(Issue('info','pdf-text-check-skipped',f'PDF 文本层无法自动复核：{e}'))
+def norm(s):return re.sub(r"\s+","",str(s or "").lower())
 
 def validate(run:Path,strict=False):
     issues=[]
-    if not run.is_dir():return [Issue('error','missing-run-dir',f'不是目录：{run}')]
-    meta=_json(run/'run_metadata.json',issues,'run-metadata');model=_json(run/'report_model.json',issues,'report-model')
-    if str(meta.get('schema_version')) not in {'2.1','2.1.1'}:issues.append(Issue('error','schema-version','run_metadata.schema_version 必须为 2.1/2.1.1'))
-    is211=str(meta.get('schema_version'))=='2.1.1'
-    for k in ('region_confirmed','specified_entities_confirmed','output_format_confirmed'):
-        if meta.get(k) is not True:issues.append(Issue('error','preflight-incomplete',f'Preflight 未确认：{k}',k))
-    formats=meta.get('requested_output_format') or []
-    if isinstance(formats,str):formats=[formats]
-    if not formats or any(x not in FORMATS for x in formats):issues.append(Issue('error','invalid-output-format','requested_output_format 必须是 docx/pdf/html 数组'))
-    if meta.get('run_status')=='preflight-incomplete':issues.append(Issue('error','preflight-status','run_status 仍为 preflight-incomplete'))
-    qreq={'query_id','query_text','query_type','query_purpose','measurement_target','discovery_channel','discovery_round','semantic_theme','region','status'};rreq={'result_id','query_id','entity_id','source_url','matched_name','matched','counts_as_measurement_hit'};creq={'candidate_id','entity_id','display_name','candidate_type','discovery_round','discovery_channel','user_specified','status','merged_into_entity_id','exclusion_reason'};ereq={'entity_id','canonical_name','entity_type','aliases','legal_name','former_names','brand_name','official_domain','official_account','disambiguation_notes'};evreq={'evidence_id','entity_id','institution','query_id','source_url','source_grade','independent','claim_type','counting_scope'};sreq={'institution','entity_id','inclusion_basis',*WEIGHTS.keys(),'total','tier','generic_hits','generic_queries','brand_hits','evidence_count','independent_domains','authority_index'};covreq={'region','discovery_channel','semantic_theme','required','query_count','result_count','eligible_candidates_found','status'};ipreq={'teacher_name','entity_id','institution','ip_hits','ip_queries','ip_recall','source_ids'}
-    queries,_=_csv(run/'queries.csv',issues,'queries',qreq);results,_=_csv(run/'query_results.csv',issues,'query-results',rreq);coverage,_=_csv(run/'discovery_coverage.csv',issues,'discovery-coverage',covreq);cands,_=_csv(run/'candidate_pool.csv',issues,'candidate-pool',creq);entities,_=_csv(run/'entities.csv',issues,'entities',ereq);evidence,_=_csv(run/'evidence.csv',issues,'evidence',evreq);scores,_=_csv(run/'scores.csv',issues,'scores',sreq);ips,_=_csv(run/'ip_entities.csv',issues,'ip-entities',ipreq);_csv(run/'entity_relations.csv',issues,'entity-relations',{'relation_id','source_entity_id','relation_type','target_entity_id','evidence_ids','confidence'});details=_json(run/'score_details.json',issues,'score-details')
-    qmap={};inst_m=set();ip_m=set();discovery_channels=set();rounds=set()
-    for i,q in enumerate(queries,2):
-        qid=q.get('query_id','').strip()
-        if not qid or qid in qmap:issues.append(Issue('error','duplicate-query-id',f'queries.csv 第{i}行 query_id 重复/为空'))
-        qmap[qid]=q;qt=q.get('query_type','').lower();qp=q.get('query_purpose','').lower();status=q.get('status','').lower();target=q.get('measurement_target','').lower()
-        if qp not in PURPOSES:issues.append(Issue('error','invalid-query-purpose',f'{qid} query_purpose 无效'))
-        if qp=='measurement':
-            if qt!='generic':issues.append(Issue('error','measurement-not-generic',f'{qid} measurement 必须 generic'))
-            if target not in TARGETS:issues.append(Issue('error','measurement-target',f'{qid} measurement_target 必须 institution/ip'))
-            if status=='sampled':(inst_m if target=='institution' else ip_m).add(qid)
-        elif target:issues.append(Issue('error','unexpected-measurement-target',f'{qid} 非 measurement 不应设置 measurement_target'))
-        if qp=='discovery' and status=='sampled':
-            ch=q.get('discovery_channel','').lower();discovery_channels.add(ch)
-            if ch not in DISCOVERY_CHANNELS:issues.append(Issue('error','invalid-discovery-channel',f'{qid} discovery_channel 无效'))
-            try:rounds.add(int(q.get('discovery_round') or 0))
-            except:issues.append(Issue('error','invalid-discovery-round',f'{qid} discovery_round 无效'))
-            if not q.get('semantic_theme','').strip():issues.append(Issue('error','missing-semantic-theme',f'{qid} 缺少 semantic_theme'))
-    regional=meta.get('research_mode','regional-landscape')=='regional-landscape'
-    if regional and not DISCOVERY_CHANNELS<=discovery_channels:issues.append(Issue('error','discovery-channel-coverage','地区全景必须覆盖六路 Discovery'))
-    if not inst_m:issues.append(Issue('error','no-institution-measurement','没有机构 Measurement'))
-    hit=defaultdict(set);brand=defaultdict(set);ip_hit=defaultdict(set);disc_names=defaultdict(set);disc_eids=set()
-    for r in results:
-        qid=r.get('query_id','');eid=r.get('entity_id','');matched=r.get('matched','').lower() in TRUE;counted=r.get('counts_as_measurement_hit','').lower() in TRUE
-        if qid not in qmap:issues.append(Issue('error','result-query-missing',f'{r.get("result_id")} 引用不存在 Query'));continue
-        if counted and not matched:issues.append(Issue('error','measurement-isolation',f'{r.get("result_id")} 未命中却计入 Measurement'))
-        if counted and qid not in inst_m|ip_m:issues.append(Issue('error','measurement-isolation',f'{r.get("result_id")} Discovery/Verification 不得计入 Recall'))
-        if matched and counted and qid in inst_m:hit[eid].add(qid)
-        if matched and counted and qid in ip_m:ip_hit[eid].add(qid)
-        q=qmap[qid]
-        if matched and q.get('query_type','').lower()=='brand' and q.get('query_purpose','').lower()=='verification':brand[eid].add(qid)
-        if matched and q.get('query_purpose')=='discovery':
-            if eid:disc_eids.add(eid)
-            nm=_norm_name(r.get('matched_name'))
-            if nm and _domain(r.get('source_url')):disc_names[nm].add(_domain(r.get('source_url')))
-    required=[r for r in coverage if r.get('required','').lower() in TRUE];bad=[r for r in required if r.get('status','') not in {'covered','no-result-reviewed'} or (_num(r.get('query_count')) or 0)<=0]
-    if bad:issues.append(Issue('error','semantic-coverage-gate',f'{len(bad)} 个 required Semantic Theme 未完成'))
-    if meta.get('semantic_coverage_gate') is not True:issues.append(Issue('error','semantic-coverage-metadata','run_metadata 未标记 semantic_coverage_gate=true'))
-    if is211 and regional:
-        groups={_theme_group(r.get('semantic_theme')) for r in required if r.get('status') in {'covered','no-result-reviewed'} and (_num(r.get('query_count')) or 0)>0};missing_groups=[g for g in LOCAL_GROUPS if g not in groups]
-        if missing_groups:issues.append(Issue('error','local-ecosystem-coverage',f'Local Ecosystem Recall 未覆盖：{", ".join(missing_groups)}'))
-        if meta.get('local_ecosystem_gate') is not True:issues.append(Issue('error','local-ecosystem-metadata','run_metadata 未标记 local_ecosystem_gate=true'))
-    entity_ids={e.get('entity_id') for e in entities};scored=set();user_spec=set();round_entities=defaultdict(set);candidate_eids={c.get('entity_id') for c in cands if c.get('entity_id')}
-    for c in cands:
-        eid=c.get('entity_id','');st=c.get('status','')
-        if st not in FINAL_STATUSES:issues.append(Issue('error','unfinished-candidate-status',f'{c.get("candidate_id")} status 无效'))
-        if eid and eid not in entity_ids:issues.append(Issue('error','candidate-entity-missing',f'{c.get("candidate_id")} entity_id 不存在'))
-        if st=='scored':scored.add(eid)
-        if c.get('user_specified','').lower() in TRUE:
-            user_spec.add(eid)
-            if st=='excluded':issues.append(Issue('error','user-specified-disappeared',f'用户指定主体 {c.get("display_name")} 不得 excluded 后静默消失'))
-        try:round_entities[int(c.get('discovery_round') or 0)].add(eid)
-        except:pass
-    for eid in sorted(disc_eids-candidate_eids):issues.append(Issue('error','discovery-result-candidate-missing',f'Discovery 已解析实体 {eid} 未进入 Candidate Pool',eid))
-    candidate_names={_norm_name(c.get('display_name')) for c in cands}
-    for nm,domains in disc_names.items():
-        if len(domains)>=2 and nm not in candidate_names:issues.append(Issue('error','repeated-discovery-name-missing',f'同一 Discovery 主体在 {len(domains)} 个独立域出现却未进入 Candidate Pool：{nm}',nm))
-    if (meta.get('requested_entities') or []) and not user_spec:issues.append(Issue('error','specified-entities-untracked','run_metadata 有指定主体，但 candidate_pool 无 user_specified=true'))
-    last=max(rounds or round_entities.keys() or {0});prev=set().union(*(round_entities[r] for r in round_entities if r<last));eligible={c.get('entity_id') for c in cands if c.get('status') in {'scored','evidence-insufficient'} and c.get('entity_id')};neweligible={c.get('entity_id') for c in cands if str(c.get('discovery_round'))==str(last) and c.get('status') in {'scored','evidence-insufficient'} and c.get('entity_id') not in prev};ratio=len(neweligible)/max(1,len(eligible));saturation_ok=(ratio<0.10 or len(neweligible)<=1 or meta.get('consecutive_no_important_new_rounds',0)>=2)
-    if not saturation_ok:issues.append(Issue('error','saturation-gate',f'候选未收敛：末轮新增可评估 {len(neweligible)}，占 {ratio:.0%}'))
-    if meta.get('saturation_gate') is not True:issues.append(Issue('error','saturation-metadata','run_metadata 未标记 saturation_gate=true'))
-    if meta.get('candidate_pool_frozen') is not True:issues.append(Issue('error','candidate-not-frozen','candidate_pool_frozen 必须 true'))
-    score_ids=set();ev_by=defaultdict(list)
-    for e in evidence:
-        if e.get('counting_scope','').lower()!='ignored':ev_by[e.get('entity_id')].append(e)
-    for s in scores:
-        eid=s.get('entity_id','');score_ids.add(eid)
-        if eid not in entity_ids:issues.append(Issue('error','score-entity-missing',f'{s.get("institution")} entity_id 不存在'))
-        if eid not in scored:issues.append(Issue('error','score-candidate-status',f'{s.get("institution")} candidate 未标 scored'))
-        vals=[]
-        for f,mx in WEIGHTS.items():
-            v=_num(s.get(f))
-            if v is None or not 0<=v<=mx:issues.append(Issue('error','score-out-of-range',f'{s.get("institution")} {f} 无效'))
-            else:vals.append(v)
-        total=_num(s.get('total'))
-        if total is None or abs(total-sum(vals))>1e-6:issues.append(Issue('error','score-sum',f'{s.get("institution")} total 与五维不一致'))
-        elif s.get('tier')!=_tier(total):issues.append(Issue('error','score-tier',f'{s.get("institution")} tier 不一致'))
-        if _num(s.get('generic_hits'))!=len(hit[eid]) or _num(s.get('generic_queries'))!=len(inst_m):issues.append(Issue('error','institution-recall-mismatch',f'{s.get("institution")} 机构 Recall 与 Query Log 不一致'))
-        if _num(s.get('brand_hits'))!=len(brand[eid]):issues.append(Issue('error','brand-hit-mismatch',f'{s.get("institution")} brand_hits 不一致'))
-        if _num(s.get('evidence_count'))!=len(ev_by[eid]):issues.append(Issue('error','evidence-count-mismatch',f'{s.get("institution")} evidence_count 不一致；应由 score_geo --run-dir 自动派生'))
-    if scored!=score_ids:issues.append(Issue('error','candidate-score-set-mismatch','candidate_pool scored 集合与 scores.csv 不一致'))
-    dmap={x.get('entity_id'):x for x in details if isinstance(x,dict)} if isinstance(details,list) else {}
-    for s in scores:
-        dims=(dmap.get(s.get('entity_id')) or {}).get('dimensions',{})
-        for f in WEIGHTS:
-            d=dims.get(f,{}) if isinstance(dims,dict) else {}
-            if not d.get('reason'):issues.append(Issue('error','missing-dimension-reason',f'{s.get("institution")} {f} 缺理由'))
-            if not (d.get('query_ids') or d.get('evidence_ids')):issues.append(Issue('error','missing-dimension-sources',f'{s.get("institution")} {f} 缺来源'))
-    for ip in ips:
-        eid=ip.get('entity_id','');queries_n=_num(ip.get('ip_queries')) or 0;hits_n=_num(ip.get('ip_hits')) or 0
-        if queries_n!=len(ip_m):issues.append(Issue('error','ip-query-denominator-mismatch',f'{ip.get("teacher_name")} ip_queries 不一致'))
-        if hits_n!=len(ip_hit[eid]):issues.append(Issue('error','ip-hit-mismatch',f'{ip.get("teacher_name")} ip_hits 不一致'))
-    k=(model or {}).get('kpis',{});inst_ids={e.get('entity_id') for e in entities if e.get('entity_type') in {'institution','brand'}};unique_inst={c.get('entity_id') for c in cands if c.get('entity_id') in inst_ids};evaluable={c.get('entity_id') for c in cands if c.get('entity_id') in inst_ids and c.get('status') in {'scored','evidence-insufficient'}};obs=[c for c in cands if c.get('status') in {'evidence-insufficient','unresolved'}];expected={'independent_institutions':len(unique_inst),'evaluable_institutions':len(evaluable),'scored_institutions':len(scores),'institution_measurement_queries':len(inst_m),'ip_measurement_queries':len(ip_m),'evidence_count':len(evidence),'entity_nodes':len(entities),'ip_entities':len(ips),'observation_entities':len(obs)}
-    for key,val in expected.items():
-        if k.get(key)!=val:issues.append(Issue('error','report-data-mismatch',f'report_model.kpis.{key}={k.get(key)!r}，实际 {val}',key))
-    ipmodel=model.get('ip_measurement') if isinstance(model,dict) else None
-    if ip_m:
-        if not isinstance(ipmodel,dict) or not ipmodel.get('executed'):issues.append(Issue('error','report-ip-missing','执行了 IP Measurement，但 Report Model 没有可渲染的 ip_measurement'))
-        elif len(ipmodel.get('rows') or [])!=len(ips):issues.append(Issue('error','report-ip-count-mismatch','Report Model IP 行数与 ip_entities.csv 不一致'))
-    if obs:
-        rows=model.get('observation_group') or []
-        if not rows:issues.append(Issue('error','observation-group-missing','存在 evidence-insufficient/unresolved，但 Report Model 未披露观察组'))
-        else:
-            expected_obs={(c.get('entity_id') or '',_norm_name(c.get('display_name'))) for c in obs};got_obs={(x.get('entity_id') or '',_norm_name(x.get('name'))) for x in rows};missing_obs=expected_obs-got_obs
-            if missing_obs:issues.append(Issue('error','observation-group-incomplete',f'Report Model 观察组遗漏 {len(missing_obs)} 个主体'))
-    app=model.get('appendix') if isinstance(model,dict) else None
-    if not isinstance(app,dict):issues.append(Issue('error','missing-appendix','Report Model 必须有 Appendix'))
-    else:
-        for key in ('candidate_status','research_assets','research_audit'):
-            if not app.get(key):issues.append(Issue('error','appendix-contract-missing',f'Appendix 缺少或为空：{key}',key))
-    chart_data=_json(run/'charts'/'chart_data.json',issues,'chart-data')
-    for name in ('geo-score-ranking.svg','authority-recall-matrix.svg','dimension-heatmap.svg','candidate-funnel.svg'):
-        if not (run/'charts'/name).is_file():issues.append(Issue('error','missing-required-chart',f'缺少 {name}',name))
-    ranking=chart_data.get('ranking',[]) if isinstance(chart_data,dict) else [];expected_rank=[(s.get('entity_id'),_num(s.get('total'))) for s in sorted(scores,key=lambda x:_num(x.get('total')) or 0,reverse=True)];got_rank=[(x.get('entity_id'),_num(x.get('total'))) for x in ranking]
-    if expected_rank!=got_rank:issues.append(Issue('error','chart-score-mismatch','Ranking Chart 数据与 scores.csv 不一致'))
-    if chart_data.get('measurement_denominator')!=len(inst_m):issues.append(Issue('error','chart-recall-denominator-mismatch','Chart Measurement denominator 不一致'))
-    delivered=run/'deliverables';found=[]
+    if not run.is_dir():return [Issue("error","missing-run-dir",f"不是目录：{run}")]
+    meta=rjson(run/"run_metadata.json",issues,"run-metadata")
+    if str(meta.get("schema_version"))!=VERSION or str(meta.get("skill_version"))!=VERSION:issues.append(Issue("error","version","run_metadata schema_version / skill_version 必须为 2.2"))
+    if meta.get("official_output_format")!="docx":issues.append(Issue("error","output-contract","v2.2 唯一正式输出必须是 docx"))
+    for k in ("region_confirmed","seed_entities_confirmed","discovery_supplement_confirmed"):
+        if meta.get(k) is not True:issues.append(Issue("error","preflight-incomplete",f"Preflight 未确认：{k}",k))
+    mode=meta.get("research_mode");seeds=[str(x).strip() for x in meta.get("seed_entities",[]) if str(x).strip()]
+    if mode=="scoped-geo-landscape" and not seeds:issues.append(Issue("error","seed-required","scoped-geo-landscape 必须至少有一个用户 Seed"))
+    if mode not in {"scoped-geo-landscape","blind-discovery-scan"}:issues.append(Issue("error","research-mode","research_mode 无效"))
+    if meta.get("market_universe_confirmed") is not True:issues.append(Issue("error","universe-not-confirmed","Market Universe 未经用户确认，不得进入正式 Measurement"))
+    if meta.get("measurement_allowed") is not True:issues.append(Issue("error","measurement-not-authorized","measurement_allowed 必须为 true"))
+
+    ureq={"entity_id","canonical_name","aliases","entity_type","user_seed","discovery_origin","market_scope","operating_region","market_role","activity_status","platform_native","salience_basis","universe_status","confirmation_status","notes"}
+    qreq={"query_id","query_text","query_group","measurement_target","region","status"};mreq={"mention_id","answer_id","entity_id","mention_rank","mentioned_name","match_method","top3","first_mention","entity_correct","citation_linked","concepts","notes"};sreq={"result_id","query_id","engine","rank","url","title","snippet","sampled_at"};smreq={"serp_mention_id","result_id","entity_id","matched_text","match_surface","notes"};pmreq={"page_mention_id","result_id","entity_id","matched_text","page_url","notes"};ereq={"evidence_id","entity_id","source_url","source_title","source_grade","source_owner","claim_type","counting_scope","notes"};rreq={"recheck_id","sample_type","source_id","first_decision","second_decision","disagreement","resolution","recheck_by","notes"}
+    universe,_=rcsv(run/"market_universe.csv",issues,"market-universe",ureq);queries,_=rcsv(run/"queries.csv",issues,"queries",qreq);answers=rjsonl(run/"ai_answers.jsonl",issues,"ai-answers");mentions,_=rcsv(run/"ai_mentions.csv",issues,"ai-mentions",mreq);serp,_=rcsv(run/"serp_results.csv",issues,"serp-results",sreq);serp_mentions,_=rcsv(run/"serp_mentions.csv",issues,"serp-mentions",smreq);page_mentions,_=rcsv(run/"page_mentions.csv",issues,"page-mentions",pmreq);rcsv(run/"evidence.csv",issues,"evidence",ereq);rechecks,_=rcsv(run/"rechecks.csv",issues,"rechecks",rreq);metrics,_=rcsv(run/"ai_metrics.csv",issues,"ai-metrics",{"entity_id","nomination_rate","top3_rate","first_mention_rate","citation_rate","answer_cells","engines_sampled","cross_model_consistency"});model=rjson(run/"report_model.json",issues,"report-model")
+
+    ids=set();seed_names={norm(x) for x in seeds};seen_seed=set()
+    for i,r in enumerate(universe,2):
+        eid=r.get("entity_id","").strip();name=r.get("canonical_name","").strip()
+        if not eid or eid in ids:issues.append(Issue("error","universe-id",f"market_universe 第{i}行 entity_id 重复或为空"));continue
+        ids.add(eid)
+        if not name:issues.append(Issue("error","universe-name",f"{eid} canonical_name 为空"))
+        if r.get("market_scope") not in VALID_SCOPES:issues.append(Issue("error","market-scope",f"{name} market_scope 无效"))
+        if r.get("market_role") not in VALID_ROLES:issues.append(Issue("error","market-role",f"{name} market_role 无效"))
+        if r.get("universe_status") not in VALID_UNIVERSE:issues.append(Issue("error","universe-status",f"{name} universe_status 无效"))
+        if r.get("confirmation_status")!="confirmed":issues.append(Issue("error","universe-row-unconfirmed",f"{name} 尚未 confirmation_status=confirmed"))
+        if r.get("market_role") in {"local-core","local-active"} and r.get("market_scope") not in {"local","regional"}:issues.append(Issue("error","local-role-without-scope",f"{name} 被标为本土角色，但 market_scope={r.get('market_scope')}"))
+        if r.get("user_seed","").lower() in TRUE:seen_seed.add(norm(name));seen_seed.update(norm(x) for x in (r.get("aliases") or "").split("|") if x)
+    missing_seeds=sorted(x for x in seed_names if x not in seen_seed)
+    if missing_seeds:issues.append(Issue("error","seed-disappeared",f"用户 Seed 未进入 Market Universe：{', '.join(missing_seeds)}"))
+
+    qmap={q.get("query_id"):q for q in queries};answer_ids=set();answers_by_query=defaultdict(list);engines=set()
+    for a in answers:
+        aid=str(a.get("answer_id","")).strip();qid=str(a.get("query_id","")).strip()
+        if not aid or aid in answer_ids:issues.append(Issue("error","answer-id",f"ai_answers 行 {a.get('_line')} answer_id 重复/为空"));continue
+        answer_ids.add(aid)
+        if qid not in qmap:issues.append(Issue("error","answer-query",f"{aid} 引用不存在 query_id {qid}"));continue
+        if qmap[qid].get("measurement_target") not in VALID_TARGETS:issues.append(Issue("error","measurement-target",f"{qid} measurement_target 必须 institution/ip"))
+        if not str(a.get("response_text","")).strip():issues.append(Issue("error","empty-answer",f"{aid} 缺原始 response_text"))
+        answers_by_query[qid].append(a);engines.add(str(a.get("engine","")).strip())
+    if mode=="scoped-geo-landscape" and not answers:issues.append(Issue("error","no-ai-measurement","正式 GEO Landscape 必须有 AI Answer Measurement；否则只能做 Asset Audit"))
+    declared=set(meta.get("ai_engines_expected") or [])
+    if declared:
+        for q in queries:
+            if q.get("status")=="sampled" and q.get("measurement_target") in VALID_TARGETS:
+                qeng={str(a.get("engine","")).strip() for a in answers_by_query.get(q.get("query_id"),[])};miss=declared-qeng
+                if miss:issues.append(Issue("error","engine-coverage",f"{q.get('query_id')} 缺 AI 引擎采样：{', '.join(sorted(miss))}"))
+    amap={a.get("answer_id"):a for a in answers};mention_pairs=set()
+    for m in mentions:
+        aid=m.get("answer_id");eid=m.get("entity_id");pair=(aid,eid)
+        if aid not in amap:issues.append(Issue("error","mention-answer",f"{m.get('mention_id')} 引用不存在 answer_id"));continue
+        if eid not in ids:issues.append(Issue("error","mention-entity",f"{m.get('mention_id')} 引用不存在 entity_id"));continue
+        if pair in mention_pairs:issues.append(Issue("error","duplicate-answer-entity-mention",f"同一 answer/entity 重复计提：{aid}/{eid}"))
+        mention_pairs.add(pair)
+        if m.get("match_method") not in VALID_MATCH:issues.append(Issue("error","match-method",f"{m.get('mention_id')} match_method 无效"))
+        if m.get("match_method") in {"explicit-name","verified-alias"}:
+            needle=norm(m.get("mentioned_name"));text=norm(amap[aid].get("response_text"))
+            if not needle or needle not in text:issues.append(Issue("error","mention-not-in-answer",f"{m.get('mention_id')} 的 mentioned_name 未出现在原始回答"))
+        rank=num(m.get("mention_rank"))
+        if m.get("match_method")!="citation-only" and (rank is None or rank<1):issues.append(Issue("error","mention-rank",f"{m.get('mention_id')} mention_rank 无效"))
+        if m.get("entity_correct","").lower() not in TRUE:issues.append(Issue("warning","entity-correctness",f"{m.get('mention_id')} 未确认实体正确，不应进入正式提名统计"))
+
+    result_ids=set();rank_keys=set();rmap={}
+    for r in serp:
+        rid=r.get("result_id");key=(r.get("query_id"),r.get("engine"),r.get("rank"))
+        if rid in result_ids:issues.append(Issue("error","serp-result-id",f"serp_results result_id 重复：{rid}"))
+        result_ids.add(rid);rmap[rid]=r
+        if key in rank_keys:issues.append(Issue("error","serp-rank-duplicate",f"同一 query/engine/rank 只能有一个真实 Result Item：{key}"))
+        rank_keys.add(key)
+        if not r.get("title") and not r.get("snippet"):issues.append(Issue("error","serp-no-surface",f"{rid} title/snippet 均为空"))
+    for m in serp_mentions:
+        rid=m.get("result_id");surface=m.get("match_surface")
+        if rid not in rmap:issues.append(Issue("error","serp-mention-result",f"{m.get('serp_mention_id')} 引用不存在 result_id"));continue
+        if m.get("entity_id") not in ids:issues.append(Issue("error","serp-mention-entity",f"{m.get('serp_mention_id')} 引用不存在 entity_id"))
+        if surface not in {"title","snippet","both"}:issues.append(Issue("error","serp-match-surface",f"{m.get('serp_mention_id')} match_surface 必须 title/snippet/both"));continue
+        text=(rmap[rid].get("title","") if surface in {"title","both"} else "")+(rmap[rid].get("snippet","") if surface in {"snippet","both"} else "")
+        if norm(m.get("matched_text")) not in norm(text):issues.append(Issue("error","serp-mention-not-visible",f"{m.get('serp_mention_id')} matched_text 不在 title/snippet；网页正文提及必须写 page_mentions.csv"))
+    for p in page_mentions:
+        if p.get("result_id") and p.get("result_id") not in rmap:issues.append(Issue("error","page-mention-result",f"{p.get('page_mention_id')} 引用不存在 result_id"))
+
+    ai_rechecks=[r for r in rechecks if r.get("sample_type")=="ai-answer" and r.get("source_id") in answer_ids]
+    if len(answers)>=10:
+        coverage=len({r.get("source_id") for r in ai_rechecks})/len(answers)
+        if coverage<0.20:issues.append(Issue("error","recheck-coverage",f"AI Answer 复判覆盖仅 {coverage:.1%}，最低要求 20%"))
+    for r in ai_rechecks:
+        if r.get("disagreement","").lower() in TRUE and not r.get("resolution","").strip():issues.append(Issue("error","unresolved-recheck",f"{r.get('recheck_id')} 存在分歧但无 resolution"))
+
+    for key in ("market_universe","ai_visibility","asset_readiness","concept_map","observation_group","appendix","kpis"):
+        if key not in model:issues.append(Issue("error","report-contract",f"report_model 缺少 {key}"))
+    if model.get("schema_version")!=VERSION:issues.append(Issue("error","report-version","report_model.schema_version 必须为 2.2"))
+    for r in (model.get("market_universe",{}) or {}).get("local_institutions",[]):
+        if r.get("market_scope") not in {"local","regional"}:issues.append(Issue("error","report-local-scope",f"报告本土机构 {r.get('canonical_name')} 缺 local/regional scope"))
+    mm={r.get("entity_id"):r for r in metrics};report_ids=set()
+    for group in (model.get("ai_visibility") or {}).values():
+        if isinstance(group,list):report_ids.update(r.get("entity_id") for r in group)
+    expected={r.get("entity_id") for r in universe if r.get("universe_status")=="included" and r.get("entity_id") in mm}
+    if expected-report_ids:issues.append(Issue("error","metrics-dropped",f"Report Model 丢失 AI Metrics 主体：{', '.join(sorted(expected-report_ids))}"))
+
+    delivered=run/"deliverables";docx=delivered/"report.docx"
+    if not docx.is_file():issues.append(Issue("error","missing-docx","缺少唯一正式交付物 deliverables/report.docx"))
     if delivered.is_dir():
-        for p in delivered.iterdir():
-            if p.is_file() and p.suffix.lower().lstrip('.') in FORMATS:found.append(p.suffix.lower().lstrip('.'))
-    missing=[f for f in formats if f not in found]
-    if missing:issues.append(Issue('error','missing-selected-artifact','缺少用户选择的正式产出：'+','.join(missing)))
-    extra=[f for f in found if f not in formats]
-    if extra:issues.append(Issue('warning','unexpected-output-artifact','存在未请求的正式产出：'+','.join(extra),','.join(sorted(extra))))
-    for fmt in formats:_renderer_check(run,fmt,issues,model)
-    if meta.get('sampling_mode')=='public-web-proxy':issues.append(Issue('info','proxy-sampling-boundary','public-web-proxy 是 AI Search Visibility 的公开网页代理观察，不等价于所有模型真实回答。'))
+        bad=[p.name for p in delivered.iterdir() if p.is_file() and p.name!="report.docx" and p.suffix.lower() in {".pdf",".html"}]
+        if bad:issues.append(Issue("error" if strict else "warning","extra-formats","v2.2 不允许正式生成 PDF/HTML："+", ".join(bad)))
+    if docx.is_file():
+        try:
+            with zipfile.ZipFile(docx) as z:xml=z.read("word/document.xml").decode("utf-8",errors="ignore")
+            for phrase in ("待归纳","由 score_details","本次已执行 IP Measurement。"):
+                if phrase in xml:issues.append(Issue("error","placeholder-text",f"Word 报告仍包含占位文案：{phrase}"))
+        except Exception as e:issues.append(Issue("error","docx-invalid",f"report.docx 无法读取：{e}"))
     return issues
 
 def main():
-    p=argparse.ArgumentParser();p.add_argument('run_dir',nargs='?',type=Path);p.add_argument('--strict',action='store_true');p.add_argument('--json',action='store_true');p.add_argument('--self-test',action='store_true');a=p.parse_args()
-    if a.self_test:print('validate_run v2.1.1：请运行 scripts/test_v211.py 完整自测');return 0
-    if not a.run_dir:p.error('必须提供 run_dir')
-    issues=validate(a.run_dir,a.strict);errors=sum(x.level=='error' for x in issues);warnings=sum(x.level=='warning' for x in issues)
-    if a.json:print(json.dumps({'errors':errors,'warnings':warnings,'issues':[asdict(x) for x in issues]},ensure_ascii=False,indent=2))
+    p=argparse.ArgumentParser();p.add_argument("run_dir",nargs="?",type=Path);p.add_argument("--strict",action="store_true");p.add_argument("--json",action="store_true");a=p.parse_args()
+    if not a.run_dir:p.error("必须提供 run_dir")
+    issues=validate(a.run_dir,a.strict);errors=sum(x.level=="error" for x in issues);warnings=sum(x.level=="warning" for x in issues)
+    if a.json:print(json.dumps({"errors":errors,"warnings":warnings,"issues":[asdict(x) for x in issues]},ensure_ascii=False,indent=2))
     else:
-        for x in issues:print(f'{x.level.upper()} [{x.code}] {x.message}')
-        print(f'校验摘要：{errors} 个错误，{warnings} 个警告')
+        for x in issues:print(f"{x.level.upper()} [{x.code}] {x.message}")
+        print(f"校验摘要：{errors} 个错误，{warnings} 个警告")
     return 1 if errors or (a.strict and warnings) else 0
-if __name__=='__main__':raise SystemExit(main())
+if __name__=="__main__":raise SystemExit(main())

@@ -1,342 +1,315 @@
 ---
 name: acs-gongkao-geo-research
-description: 调查中国公务员及公职考试培训机构、品牌和老师/IP 在生成式搜索与 AI 搜索中的可见性。v2.1.1 在 v2.1 的三步 Preflight、Semantic Coverage、机构/IP Measurement、五维 GEO Score 与正式咨询报告基础上，新增 Local Ecosystem Completeness Gate、本土机构与平台原生 IP 召回、观察组不消失、Report Model 完整性、响应式 HTML 与四层验收。不得用来评价教学质量、上岸率、市场份额或一般口碑。
+description: 调查中国公务员及公职考试培训机构、品牌和老师/IP 的 GEO。v2.2 采用 Market Universe + AI Answer Measurement + GEO Asset Readiness：先让用户提供需要保证覆盖的 Seed 主体，再由系统补充并让用户确认 Market Universe；之后用固定无品牌问题记录真实 AI 回答中的提名、Top3、首提、引用和跨模型一致性，公开网页只用于解释资产成熟度与证据。唯一正式输出为 DOCX。不得用来评价教学质量、通过率、市场份额或一般口碑。
 metadata:
-  version: "2.1.1"
+  version: "2.2"
 ---
 
-# 公考机构 GEO 调研 v2.1.1
+# 公考机构 GEO 调研 v2.2
 
-版本定位：**Stability + Recall Completeness + Report Contract Patch**。
+版本定位：**Market Universe + AI Answer Measurement + Single DOCX Report**。
 
-v2.1.1 不改 v2.1 的五维评分权重，也不为了任何已知机构/IP 调分。它修复三类问题：工程稳定性、复杂地区候选召回完整性、Report Model / Renderer 完整性与版式稳定性。详细补丁说明见 [v2.1.1-stability.md](references/v2.1.1-stability.md)。
+v2.2 的首要原则：**先确定研究谁，再测 AI 到底提不提；公开网页用于解释，不再替代 AI Answer。**
 
-GEO 观察的是机构、品牌、老师/IP 在公开信息环境中被**发现、正确识别、无品牌召回、引用、概念绑定**的能力。它不是教学质量、通过率、市场份额、经营规模或真实口碑排名。
+## 0. 启动协议：三步 Preflight，Word 固定输出
 
-## 0. 三步 Preflight 是唯一启动入口
+只确认尚未明确的三项：
 
-完整 Research Run 前只确认尚未明确的三项：
+1. `requested_region`；
+2. `seed_entities`：用户希望一定覆盖的机构 / 品牌 / 老师 IP，可只给部分；
+3. `allow_discovery_supplement`：是否允许系统继续补充竞争主体，默认建议允许。
 
-1. `requested_region`：省、市或自定义区域；
-2. `requested_entities`：是否有指定关注机构、品牌、老师/IP；可以明确“不指定”；
-3. `requested_output_format`：`docx|pdf|html`，默认一次任务只正式生成用户选择的格式。
-
-用户已经给出的参数不得重复机械询问。新 Run 应使用：
-
-```bash
-python3 scripts/preflight.py --region 广东 --no-specified-entities --format html --output <run-dir>/run_metadata.json
-```
-
-并写入：
+正式输出固定：
 
 ```text
-schema_version = 2.1.1
-skill_version  = 2.1.1
+official_output_format = docx
 ```
 
-Preflight 只建立研究配置，不能把三道 Freeze Gate 预先写成 true。
+不再询问 Word/PDF/HTML，不正式生成 HTML 或 PDF。
 
-### 指定主体规则
+如果用户明确没有 Seed，让系统自己发现，则进入 `blind-discovery-scan`。这类结果必须命名为“公开网络发现扫描”，不得称为完整地区竞争全景。
 
-指定关注只解决 Candidate Recall：
+## 1. User Seed 的作用边界
 
-- 强制进入 Candidate / Entity Resolution 流程；
-- 不加分、不自动进正式排名、不提高 Evidence Grade / Confidence；
-- 最终不能静默消失；机构至少落在 `scored|evidence-insufficient|unresolved|merged`，老师/IP 可落在 `ip-measured`。
+`user_seed=true` 只表示：
 
-## 1. 研究模式
+- 必须进入 Universe Review；
+- 必须完成实体解析或明确 unresolved；
+- 不能静默消失。
 
-| 模式 | 说明 |
-| --- | --- |
-| `regional-landscape` | 地区全景；自动发现整个地区候选，必须过三道 Freeze Gate |
-| `institution-deep-dive` | 单主体深挖；不自动扩张无关名单 |
-| `institution-comparison` | 指定主体比较；点名只保证调查，不加分 |
-| `gap-analysis` | 从真实弱召回、无结果、实体歧义与概念断层形成机会图 |
+它不得：
 
-## 2. v2.1.1 Research Engine
+- 提高 AI 提名率；
+- 提高任何 Asset Score；
+- 提高 Source Grade；
+- 自动变成本土核心；
+- 自动进入榜首。
+
+## 2. v2.2 总流程
 
 ```text
 Preflight
 ↓
-Region / Exam Ecology
+User Seed List
 ↓
-Six-route Candidate Discovery
+System Discovery Supplement
 ↓
-Local Ecosystem Recall Audit
+Entity Resolution + Market Salience Review
 ↓
-Entity Resolution
+Market Universe Draft
 ↓
-Semantic Coverage Audit
+USER CONFIRMATION GATE
 ↓
-Semantic Coverage Gate
-+ Saturation Gate
-+ Local Ecosystem Completeness Gate
+AI Answer Measurement
++ Open-Web Asset Audit
 ↓
-Candidate Pool Freeze
+20% Blind Recheck
 ↓
-Institution Measurement + IP Measurement
+AI Metrics + Asset Readiness
 ↓
-Verification + Evidence Audit
+Concept Ownership / Strategy Analysis
 ↓
-Fixed Five-Dimension Scoring
+report_model.json
 ↓
-Strategy Analysis
+Single DOCX Renderer
 ↓
-Shared Report Model
-↓
-Selected Renderer
-↓
-Research Validation
-→ Report Model Validation
-→ Renderer Validation
-→ Visual QA
+Strict Validation + Visual QA
 ```
 
-## 3. Discovery / Measurement / Verification 必须隔离
+## 3. Market Universe 是独立研究层
 
-- `discovery`：找候选、别名、关系；不计 Recall；
-- `measurement`：统一无品牌问题实测；只有合法 Measurement 可计 Recall；
-- `verification`：核验官网、公司、账号、老师、产品、关系、第三方来源；不计 Recall。
+Market Universe 回答：“这个地区有哪些值得研究的主体？”
 
-机构 Measurement：
+它不能由 GEO Score、Recall 或 SEO 页面数反推。
+
+`market_universe.csv` 必须显式记录：
+
+- `market_scope`: `national|regional|local|unknown`；
+- `market_role`: `national-benchmark|local-core|local-active|expert-ip|historical|observation|unclassified`；
+- `operating_region`；
+- `salience_basis`；
+- `activity_status`；
+- `platform_native`；
+- `user_seed`。
+
+“本地实体”只能来自地域事实和市场证据。低 Recall 不等于本地。
+
+### 本地主体 Salience 参考
+
+可满足以下任一组合：
+
+- 两个以上相互独立的本地区来源反复出现，且至少一个不是纯 SEO 榜单；
+- 有明确本地官方主体/线下运营/官方账号，并有至少一个独立外部来源；
+- 平台原生 Expert/IP 与本地区 + 科目/服务持续绑定，并有可确认身份。
+
+纯全国 SEO 榜单中出现，不足以自动成为本地核心竞争者。
+
+## 4. Market Universe Confirmation 是正式 Gate
+
+System Discovery 后必须先给用户看候选主体清单，至少分：
+
+- 全国基准；
+- 本地 / 区域机构；
+- Expert / IP；
+- 历史 / 观察主体。
+
+用户可补充、删除、改分类。确认后：
 
 ```text
-query_type=generic
-query_purpose=measurement
-measurement_target=institution
-status=sampled
+market_universe_confirmed = true
+measurement_allowed = true
 ```
 
-IP Measurement：
+未确认时禁止正式 AI Measurement；validator 必须报错。
+
+## 5. AI Answer Measurement 是核心 GEO
+
+正式地区 GEO 使用固定无品牌问题，保存每个 Engine/Model 的原始回答：
 
 ```text
-query_type=generic
-query_purpose=measurement
-measurement_target=ip
-status=sampled
+ai_answers.jsonl
 ```
 
-Discovery / Verification 即使命中品牌，也不得写 `counts_as_measurement_hit=true`。
-
-## 4. 六路 Discovery 保留，但不能当作“已找全”
-
-六路：
-
-1. `user-query`
-2. `exam-vertical`
-3. `institutional`
-4. `platform`
-5. `expert-ip`
-6. `entity-alias`
-
-所有 Discovery 仍需写入 `discovery_coverage.csv`，记录 `semantic_theme`、query_count、result_count、eligible_candidates_found、status。
-
-## 5. Local Ecosystem Recall Audit（v2.1.1 新增）
-
-地区全景 Candidate Freeze 前必须额外覆盖三组机器可检主题：
+每个实体在回答中的显式提名写：
 
 ```text
-local-institution-ecosystem
-local-expert-ip
-platform-native-ip
+ai_mentions.csv
 ```
 
-### local-institution-ecosystem
+允许计入提名的 `match_method`：
 
-寻找本土机构、工作室、基地班、地市型品牌、老师型机构。Query 动态组合地区、主要城市、主要考试垂类、课程/服务场景。禁止把任何已知机构名单写进生产规则。
+- `explicit-name`
+- `verified-alias`
 
-### local-expert-ip
+仅 citation 中出现但正文未提名，不能算 Nomination；可单独作为 Citation Evidence。
 
-从“概念/服务 → 人”反向找老师和 IP。按当地实际生态覆盖申论、行测、面试、选岗、公考规划、事业单位、选调等，不能只跑一个“老师推荐”总词。
+### 核心指标
 
-### platform-native-ip
+- `Nomination Rate = 被提名 answer cells / 全部对应 answer cells`
+- `Top3 Rate`
+- `First Mention Rate`
+- `Citation Rate`
+- `Cross-model Consistency`
 
-专门寻找先在平台形成影响力、再关联机构/概念的 Expert Entity。根据公开可访问情况覆盖抖音、视频号、B站、小红书、知乎、微博等；平台不可访问时记录限制或 `no-result-reviewed`，不得伪造结果。
+不再把 Web Search Proxy 的命中率称为真实 AI GEO Recall。
 
-## 6. Candidate Freeze 从双门禁升级为三门禁
+### 采样模式标签
 
-地区全景只有以下三者全部通过才能 `candidate_pool_frozen=true`：
+- >=3 个独立 AI/AI Search 引擎：`multi-engine`
+- 2 个：`limited-multi-engine`
+- 1 个：`single-engine`
+- 0 个：`asset-audit-only`
 
-### Gate A — Semantic Coverage
+如果没有真实 AI Answer Measurement，不得生成“真实 AI GEO 排名”。
 
-所有 `required=true` 的关键语义主题达到 `covered|no-result-reviewed`，且真实有查询。
+## 6. Open-Web 只做解释层，Result Item 与网页正文物理分离
 
-### Gate B — Saturation
+必须使用：
 
-默认满足任一：最近一轮新增率 `<10%`；或新增可评估主体 `<=1`；或连续两轮无重要新增。
-
-### Gate C — Local Ecosystem Completeness
-
-三组 `local-* / platform-native-*` 语义均真实执行并复核，且 `run_metadata.local_ecosystem_gate=true`。
-
-此外：
-
-- Discovery 已解析出的 `entity_id` 必须进入 Candidate Pool；
-- 同一未解析名称若在至少两个独立来源域重复出现，必须进入 Candidate / Entity Resolution，不能直接丢弃。
-
-## 7. Candidate 状态与“绝不静默消失”
-
-机构/品牌：
-
-- `scored`
-- `evidence-insufficient`
-- `unresolved`
-- `merged`
-- `excluded`
-
-老师/IP 增加：
-
-- `ip-measured`：进入独立 IP Measurement，但不进入机构五维总榜。
-
-凡 `evidence-insufficient|unresolved`，正式报告必须进入“本土候选观察组”，说明谁没进榜、为什么没进榜、缺什么。不能只显示“13 家证据不足”而不列名字。
-
-## 8. Evidence 与派生字段所有权
-
-Evidence 继续执行 A1/A2/B/C、独立来源、claim type、counting scope 与去重规则。
-
-v2.1.1 明确：
-
-- `generic_hits/generic_queries/brand_hits`：由 Query Log 派生；
-- `evidence_count`：由 `evidence.csv` 按 entity_id 自动派生，`counting_scope=ignored` 不计；
-- `independent_domains`：由独立 Evidence 的真实域名派生。
-
-执行者不应手工补这些数。使用：
-
-```bash
-python3 scripts/score_geo.py score_input.json --run-dir <run-dir> --pretty
+```text
+serp_results.csv
+serp_mentions.csv
+page_mentions.csv
 ```
 
-## 9. 五维 GEO Score 保持不变
+规则：
 
-- Query Coverage /30
+- `serp_results.csv` 一行 = 一个真实 Query/Engine/Rank Result Item；
+- `serp_mentions.csv` 只能匹配该 Result 的 title/snippet；
+- 打开网页正文后看到的品牌写 `page_mentions.csv`；
+- Page Mention 不得转换为 AI/Query Measurement Hit。
+
+一篇榜单正文写 12 家机构，不等于 12 家都被该 Query 召回。
+
+## 7. Platform-native IP Discovery
+
+系统补充 Expert/IP 时必须按 `Region × Intent × Platform` 展开，而不是只跑全国泛词。
+
+典型：
+
+- `{region} × 公考规划 × 抖音/视频号`
+- `{region} × 选岗 × 抖音/视频号`
+- `{region} × 申论 × B站`
+- `{region} × 面试 × B站/小红书`
+
+从账号反向建立：
+
+```text
+账号 → 人物 → 机构 → 地区 → 科目/服务 → 概念
+```
+
+## 8. Candidate Rescue
+
+以下任一主体若仍 unresolved，Universe Confirmation 前必须专项 Rescue：
+
+- `user_seed=true`；
+- 在两个以上独立来源重复出现；
+- 明显的平台原生本地 Expert/IP。
+
+专项核验至少尝试：官网、公司/组织主体、地区、平台账号、创始人/老师、课程/服务、历史名/别名。
+
+## 9. 20% Blind Recheck
+
+当 AI Answer cells >=10，至少随机抽 20% 写入 `rechecks.csv`，由第二采样者在不知道首轮判定的情况下复判。
+
+出现分歧必须写 `resolution`。未解决分歧禁止 strict pass。
+
+## 10. GEO Asset Readiness：解释 AI 为什么可能认识它
+
+Asset Readiness 满分 100，但不是最终 AI GEO 排名：
+
 - Entity Clarity /25
-- External Diversity /20
-- Concept Ownership /15
-- Freshness /10
+- Regional Semantic Density /20
+- Open-Web Assets /15
+- External Authority /15
+- Content Depth & Freshness /10
+- Data / Tool Assets /10
+- Platform Coverage /5
 
-不引入“本土品牌加分”“用户指定加分”“粉丝量加分”。
+`Owned Source Dependency` 单独展示，不自动扣分。
 
-自有域名依赖暂不改总分，只新增解释指标：
+## 11. Concept Ownership
 
-- `Owned Source Dependency Ratio`
-- `Evidence Authority Index`
+真正重要的不只是总榜。对高价值用户意图形成 `concept_ownership.csv`，至少记录：
 
-是否把自有来源依赖纳入评分，必须放到后续方法论版本单独回归。
+- concept；
+- entity；
+- strength；
+- evidence/query 支持；
+- 时间边界。
 
-## 10. IP Measurement 是独立报告对象
+例如“申论”“材料结构化”“选岗”“地市待遇”“公考规划”等必须来自本次 Universe 与真实资料，不写死任何地区案例。
 
-只要执行了 sampled `measurement_target=ip`：
+## 12. 报告分榜，不混淆全国与本土
 
-- `ip_entities.csv` 必须记录 IP 实体；
-- `report_model.json.ip_measurement.executed=true`；
-- IP 表必须至少展示：IP/老师、关联机构、hits/queries、Recall、科目/概念、平台、Evidence Confidence；
-- HTML/DOCX/PDF 都必须真正渲染数据，不能只写“本次已执行 IP Measurement”。
+正式 Word 顺序至少包含：
 
-如果没有真实 IP Measurement，只能写 Expert Entity / 可见性观察，不得写 IP GEO 排名。
+1. 封面
+2. 研究概览 / Executive Summary
+3. Market Universe
+4. 全国品牌在本地区的 AI GEO
+5. 本土 / 区域机构 AI GEO
+6. Expert / IP GEO
+7. Concept Ownership
+8. GEO Asset Readiness
+9. 重点主体诊断
+10. 区域策略与 90 天工程
+11. Appendix / Research Audit
 
-## 11. public-web-proxy 方法论边界
+不再用一个混合总榜把全国连锁、本地机构、个人 IP 全放在一起。
 
-`sampling_mode=public-web-proxy` 是公开网页代理观察，**不等价于所有大模型/AI 搜索产品在所有时点的真实回答**。它会受 SEO 站群、聚合站、自有站矩阵、索引差异、登录墙、动态网页、平台访问限制影响。
+## 13. 唯一 Renderer：DOCX
 
-并行 Agent/采样员执行 Measurement 时：
-
-- 使用统一“命中”定义；
-- 随机抽取至少 20% Measurement Query 由第二采样员复判；
-- 争议结果回到原始结果上下文，不能按印象决定。
-
-## 12. Report Model 是强契约
-
-`report_model.json` 至少必须有：
-
-```text
-meta
-kpis
-ranking
-scorecards
-observation_group
-ip_measurement
-query_occupancy
-charts
-appendix
-```
-
-`appendix` 至少消费：
-
-- `candidate_status`
-- `research_assets`
-- `research_audit`
-- Evidence Index
-
-`competition_route` 为空/待归纳时，由 `build_report_model.py` 根据 Recall、Authority、总分、自有来源依赖自动归纳；`strongest_asset/largest_gap` 从 `score_details.json` 自动归纳，禁止整表保留占位文案。
-
-## 13. HTML 设计规则
-
-HTML 是浏览器产品，A4 只属于打印模式。
-
-屏幕端必须：
-
-- `main` 使用 `max-width` 响应式；
-- SVG `width/max-width:100%; height:auto`；
-- 宽表放入 `overflow-x:auto`；
-- Scorecard 使用“紧凑排名表 + 机构诊断卡”；
-- Authority × Recall 做标签避碰/引导线。
-
-只有 `@media print` 使用 A4 页边距和分页。
-
-## 14. Renderer 纪律
-
-用户选什么正式格式，就只正式生成什么：
+正式链路：
 
 ```text
-Word → deliverables/report.docx
-PDF  → deliverables/report.pdf
-HTML → deliverables/report.html
+Research Data
+→ report_model.json
+→ generate_report_docx.py
+→ deliverables/report.docx
 ```
 
-三套 Renderer 使用同一个 Report Model，并必须包含：正式排名、本土候选观察组、IP / Expert GEO、Query 占位、策略区、Appendix / Research Audit。
+不运行正式 HTML/PDF Renderer。若用户需要 PDF，让其从最终 Word 导出，不在 Skill 内维护第二套版式。
 
-## 15. 四层验收
+图表面向 A4 Word，正文最大宽度约 165mm；宽表优先改成短指标表 + 诊断卡，不允许挤压超宽表格。
 
-不能再只用“CSV 一致”代表报告完成：
+## 14. Validator 五层门禁
 
-1. **Research Validation**：Preflight、Query、Entity、Evidence、Score、三道 Freeze Gate；
-2. **Report Model Validation**：IP、观察组、Appendix、KPI、Chart Data 完整；
-3. **Renderer Validation**：所选格式确实消费关键区块；
-4. **Visual QA**：HTML 无横向溢出/错位；Word/PDF 无裁切、重叠、坏分页。
+`validate_run.py --strict` 检查：
+
+1. Preflight；
+2. Market Universe / Seed 不消失 / 本地属性有事实依据；
+3. AI Answer + SERP Result Item Sampling Integrity；
+4. 20% Blind Recheck；
+5. Report Contract + DOCX-only Delivery。
+
+典型 ERROR：
+
+- Universe 未确认却开始 Measurement；
+- 一个 Query/Engine/Rank 出现多个 Result Item；
+- SERP Mention 实际来自网页正文；
+- User Seed 从 Universe 消失；
+- Report 把 national/unknown 主体写成本地机构；
+- AI Metrics 有主体但 Report Model 丢失；
+- deliverables 同时出现正式 PDF/HTML。
+
+## 15. 发布回归
+
+每次 v2.2 方法变更至少执行：
 
 ```bash
-python3 scripts/validate_run.py <run-dir> --strict
+python -m py_compile scripts/*.py
+python scripts/test_v22.py
 ```
 
-自动验证不替代视觉检查。
+然后必须真实跑广东、天津、山东至少三个地区。
 
-## 16. 文件系统稳定性
+Golden Reality Fixture 只允许在盲跑结束后用于后验检查，生产逻辑绝不能读取它、不能预置主体、不能加分。
 
-Chart / Renderer 统一使用 `scripts/fs_utils.py::ensure_directory()`：路径不存在则创建，已存在目录则继续，已存在非目录或不可写则明确报错，并对短暂并发竞争做有限重试。
+若一个版本在已知公开存在、具有明显地区资产的典型主体上出现大面积完全漏召回，版本不得发布，即使 Synthetic Test 和 validator 全绿。
 
-## 17. 回归测试
+## 16. 研究边界
 
-每次修改至少运行：
+GEO 不代表教学质量、通过率、市场份额、招生量或口碑。
 
-```bash
-python3 -m py_compile scripts/*.py
-python3 scripts/test_v211.py
-```
-
-回归覆盖派生 evidence_count、预建输出目录、Local Ecosystem Gate、重复本土主体不得消失、IP 数据进入 Report Model、观察组披露、自动商业归纳、HTML 响应式契约、DOCX/PDF/HTML Renderer，以及广东/山东等非天津地区归一化。
-
-fixture 只用于验证规则，不能冒充真实地区 Measurement。
-
-## 18. 最终研究汇报
-
-完成一次地区研究至少说明：
-
-- 地区与研究模式；
-- Candidate 数 / 正式评分数 / 观察组数；
-- 三道 Freeze Gate 结果；
-- 机构 / IP Measurement 数；
-- 指定主体最终状态；
-- 平台访问限制；
-- 正式输出格式；
-- Research / Report Model / Renderer / Visual QA 四层验收结果；
-- 明确声明 GEO 不代表教学质量、市场份额或上岸率。
+用户提供“招生量大”“市场很火”等行业信息可以帮助确定 Seed / Market Salience，但若要写成报告事实，必须明确来源类型：用户判断、机构自述、代理指标或公开独立事实。

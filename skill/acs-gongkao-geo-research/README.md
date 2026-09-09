@@ -1,210 +1,183 @@
-# acs-gongkao-geo-research v2.1.1
+# acs-gongkao-geo-research v2.2
 
-> 公考行业 GEO 竞争研究与咨询报告 Skill
+> 公考行业 GEO 竞争研究 Skill：先确认“研究谁”，再测“AI 到底提不提”，最后用公开资产解释原因。
 
-如果你第一次接触 GEO，可以把它理解成：
+如果你第一次接触 GEO，可以先把它理解成：
 
-**调查一个公考机构、品牌或老师/IP，在 AI 搜索与生成式搜索环境里是否容易被找到、能不能被机器正确理解、在用户没有输入品牌名时是否会自然出现、公开证据是否足够稳定。**
+**研究一家公考机构、品牌或老师/IP，在用户没有输入其名字时，是否会被 AI 自然提名；如果会，为什么会；如果不会，缺的是什么。**
 
-它不是“教学最好排行榜”，也不是“谁家上岸率最高”。
+v2.2 不再把“搜索引擎能找到很多页面”直接等同于“AI GEO 强”。
 
-## v2.1.1 为什么要升级
+## 为什么 v2.2 要重构
 
-v2.1 在全新广东环境实测后暴露出一个很典型的问题：全国品牌容易被找到，但一些真实存在、在本地市场有影响力的机构和老师/IP 可能没有进入最终报告；上游即使测过 IP，也可能因为 Report Model / Renderer 没消费数据而只剩一句“本次已执行 IP Measurement”。同时 HTML 把固定 A4 宽度直接套在浏览器，宽 SVG 和长表格容易出现错位、拥挤或横向溢出。
+v2.1/v2.1.1 的工程稳定性提高了，但真实地区回归暴露了一个更根本的问题：如果先盲搜一个省份，再让公开网页搜索决定 Candidate Universe，SEO 榜单型全国品牌会被系统性放大，而本土强招生、强私域、强短视频/视频号、强老师 IP 的主体可能被低估或漏掉。
 
-v2.1.1 不是给本土机构“抬分”，而是先解决四件事：
+因此 v2.2 改成三层：
 
-1. **找得更完整**：补本土机构、工作室、老师型品牌和平台原生 IP 的发现路线；
-2. **没进榜也说清楚**：证据不足、实体未解析的主体进入观察组，不再静默消失；
-3. **数据不丢**：IP Measurement、Candidate Audit、Research Assets 真正进入 Report Model 和三套正式报告；
-4. **报告排得稳**：HTML 响应式，A4 只用于打印；宽表和 SVG 不再硬挤。
+1. **Market Universe**：这个地区真正值得研究的主体是谁；
+2. **AI Answer Measurement**：固定无品牌问题下，AI 实际提到了谁；
+3. **GEO Asset Readiness**：公开网页、平台、第三方证据、地域语义等资产，解释 AI 为什么可能认识它。
 
-五维评分仍是 30/25/20/15/10，不因为某家机构或某个 IP 修改。
+## 第一次使用只确认三件事
 
-## 第一次使用仍然只回答三个问题
+### 1. 调查哪里？
 
-1. **调查哪里？** 例如广东省、天津市、广州市、珠三角；
-2. **有没有特别想看的机构、品牌或老师/IP？** 没有也可以；
-3. **最后要 Word、PDF 还是 HTML？** 默认只正式交你选择的那一种。
+例如：广东省、天津市、广州市、珠三角。
 
-例如：
+### 2. 你希望一定覆盖哪些机构 / 品牌 / 老师 IP？
 
-> 做广东公考 GEO，不指定机构，出 HTML。
+这叫 **Seed List（种子主体）**。不要求完整，可以只列最关心的一批。
 
-三个参数齐全后直接开始，不重复问。
+Seed 的意义只有一个：**保证研究，不保证高分。**
 
-## “指定机构/老师”不等于加分
+它不会自动增加提名率、Top3率、资产分或证据等级。
 
-指定只表示：**这个主体一定要调查到。**
+如果用户明确说“我没有名单，你自己发现”，系统切换为 `blind-discovery-scan`。这种模式只能叫“公开网络发现扫描”，不能直接包装成地区真实竞争全景。
 
-它不表示一定进排名，不自动增加 Recall，不提高证据等级，也不改变评分权重。
+### 3. 是否允许系统补充竞争主体？
 
-证据够 → 正常评分；证据不足 → 进入观察组；名字/实体还无法确认 → 标记 unresolved；老师/IP 做了独立 Measurement → 可标 `ip-measured`。
+默认建议允许。最终 Universe = 用户 Seed + 系统补充。
 
-## 为什么增加 Local Ecosystem Recall
+**输出格式不再询问：v2.2 唯一正式交付是 Word（`report.docx`）。**
 
-v2.1 已经有六路 Discovery 和 Semantic Coverage，但“考试主题都搜过”仍不等于“真实本土生态找全了”。一个地区可能有：
+## 最重要的新步骤：Market Universe Confirmation
 
-- 本土机构与工作室；
-- 基地班/地市型品牌；
-- 以老师个人为品牌的小机构；
-- 抖音、视频号、B站、小红书等平台原生公考 IP；
-- 以“选岗、公考规划、专业选择、面试”等概念占位的人物，而不是传统学科老师。
+系统完成补充 Discovery 后，不允许马上跑 Measurement。
 
-所以 v2.1.1 在 Candidate Freeze 前新增三组通用检查：
+必须先给用户看一版拟研究清单，至少分成：
 
-```text
-local-institution-ecosystem
-local-expert-ip
-platform-native-ip
-```
+- 全国基准品牌；
+- 本地 / 区域机构；
+- Expert / IP；
+- 历史 / 观察主体。
 
-注意：这不是把广东某些机构或老师写死进去，而是要求系统真的覆盖“本土机构生态、概念型 Expert/IP、平台原生 IP”三类入口。
-
-## Candidate Pool 现在有三道门
-
-以前：
+用户确认、补充或删除后，写入：
 
 ```text
-Semantic Coverage Gate
-+ Saturation Gate
+market_universe_confirmed = true
+measurement_allowed = true
 ```
 
-现在：
+没有这一步，`validate_run.py --strict` 必须失败。
+
+## 全国品牌和本土品牌不再混成一个“总榜”
+
+正式 Word 报告至少分开：
+
+1. 全国品牌在本地区的 AI GEO 表现；
+2. 本土 / 区域机构 AI GEO；
+3. Expert / IP GEO；
+4. Concept Ownership / 概念山头；
+5. GEO Asset Readiness。
+
+`market_scope` 只能来自实体事实与市场范围证据，不能由 Recall 低就反推“本地实体”。
+
+## AI Answer Measurement 才是核心 GEO
+
+固定无品牌问题，在可用的 AI / AI Search 引擎上保存原始回答，然后计算：
+
+- Nomination Rate：提名率；
+- Top3 Rate：进入前三的比例；
+- First Mention Rate：首提率；
+- Citation Rate：被提及时有实体关联引用的比例；
+- Cross-model Consistency：跨模型一致性。
+
+如果环境只能测一个模型，要明确写 `single-engine`；如果完全无法做 AI Answer Measurement，只能输出 Asset Audit，不能叫真实 AI GEO 排名。
+
+## 公开网页测量的角色变了
+
+公开 Web 仍然重要，但它是**解释层**。
+
+v2.2 把真实搜索结果拆成：
+
+- `serp_results.csv`：每个 Query 的真实 Result Item；
+- `serp_mentions.csv`：只允许标题 / 摘要中显式出现的主体；
+- `page_mentions.csv`：打开网页正文后发现的品牌提及。
+
+**Page Mention 永远不能冒充 Query / AI Measurement Hit。**
+
+因此，一篇“十大机构”文章正文写了 12 家，只能产生 Page Mention，不能让 12 家都获得一次搜索召回。
+
+## 20% Blind Recheck
+
+AI Answer Measurement 至少随机抽 20% answer cells，由第二采样者独立复判，不先看第一次结果。
+
+分歧必须写入 `rechecks.csv` 并给出 resolution。这样多人并行采样时，口径漂移能够被发现。
+
+## GEO Asset Readiness
+
+v2.2 不再把公开网页代理分数称为“最终 GEO 总分”。它只解释基础设施成熟度，100 分由以下维度组成：
+
+- Entity Clarity /25
+- Regional Semantic Density /20
+- Open-Web Assets /15
+- External Authority /15
+- Content Depth & Freshness /10
+- Data / Tool Assets /10
+- Platform Coverage /5
+
+同时单列 `Owned Source Dependency`，只作解释指标，不因某个地区或品牌临时改分。
+
+## Word-only 报告
+
+v2.2 删除正式 HTML / PDF Renderer，只维护一个 A4 DOCX 报告产品：
 
 ```text
-Semantic Coverage Gate
-+ Saturation Gate
-+ Local Ecosystem Completeness Gate
+Research Data
+→ report_model.json
+→ generate_report_docx.py
+→ Visual QA
+→ deliverables/report.docx
 ```
 
-而且有两条“不得漏掉”的机器规则：
+这样可以稳定控制：页面、字体、表格宽度、分页、诊断卡、图表最大宽度和 Appendix。
 
-- Discovery 已经解析出 entity_id，就必须进入 Candidate Pool；
-- 同一个未解析名称在至少两个独立来源域重复出现，不能直接丢掉，必须继续做候选/实体解析。
-
-## 为什么“没排名”不等于“GEO 为零”
-
-正式报告现在分至少两层：
-
-### A. 正式 GEO 排名
-
-Measurement、实体关系和证据达到正式评分要求。
-
-### B. 本土候选观察组
-
-对 `evidence-insufficient` / `unresolved` 主体公开说明：
-
-- 谁；
-- 什么类型；
-- 已经确认了什么；
-- 缺官网、法律主体、官方账号还是其他证据；
-- 为什么本次没有进入正式排名。
-
-这样用户不会再看到“13 家证据不足”却不知道是哪 13 家。
-
-## IP / Expert GEO 不再只剩一句话
-
-如果真正执行了 IP Measurement，正式报告必须给出 IP 表格，至少包括：
-
-- IP / 老师名称；
-- 关联机构；
-- IP hits / queries；
-- Recall；
-- 科目 / 概念标签；
-- 平台；
-- Evidence Confidence。
-
-老师/IP 不和机构总榜混算，也不会因为粉丝多就直接获得机构 GEO 分数。
-
-## 派生数字不用再手工补
-
-v2.1.1 的 `score_geo.py --run-dir` 自动从当前 Run 派生：
-
-- 泛词命中数与分母；
-- Brand hits；
-- Evidence 数；
-- 独立来源域名数。
-
-这能避免“第一次 strict validation 必挂，然后人工补数”的流程。
-
-## 自有站很多，是否应该扣分？
-
-v2.1.1 暂时**不改总分模型**。
-
-报告新增解释指标：
-
-- `Owned Source Dependency Ratio`：多少证据/占位高度依赖自身域名；
-- `Evidence Authority Index`：独立来源与证据质量结构。
-
-这样可以区分“召回很高但高度依赖自有站”和“第三方证据结构更健康”，但不会在 bug-fix 版本里临时改权重。是否纳入正式评分留给后续版本单独研究。
-
-## public-web-proxy 要怎么理解
-
-如果 `sampling_mode=public-web-proxy`，代表这是一轮**公开网页代理观察**，不是对所有 ChatGPT、DeepSeek、豆包、百度AI等产品真实回答的全量截屏。
-
-它会受到 SEO 站群、聚合页、自有站矩阵、登录墙、平台可访问性和搜索索引差异影响。正式报告必须写清这层限制。
-
-并行 Agent 采样时，建议至少随机抽 20% Measurement Query 做第二采样员复判，降低不同 Agent 对“什么算命中”的口径漂移。
-
-## HTML 为什么会比 v2.1 整齐
-
-v2.1 的浏览器页面把 A4 宽度直接用在屏幕端，里面又有 900/930px SVG 和 7 列长文本表，容易挤压和溢出。
-
-v2.1.1 改为：
-
-- 浏览器端 `max-width` 响应式；
-- SVG 强制缩放到容器内；
-- 宽表允许横向滚动；
-- 商业 Scorecard 拆成“紧凑排名表 + 每家机构诊断卡”；
-- Authority × Recall 加标签避碰与引导线；
-- 只有打印时才使用 A4 规则。
-
-所以 HTML 和 PDF/Word 不再被迫使用同一套物理版面。
-
-## 报告为什么要有 Appendix
-
-前台报告要给管理者看，后台研究又必须能审计。Appendix 至少披露：
-
-- Candidate Status；
-- Research Assets；
-- Freeze Gate 状态；
-- Institution / IP Measurement 数；
-- Evidence Index。
-
-这样“结论从哪里来的”和“哪些主体没进入正式排名”都可以追溯。
-
-## 最常用的说法
-
-- “做广东公考 GEO，不指定机构，出 HTML。”
-- “做天津公考 GEO，把津仕和北宋也调查进去，出 Word。”
-- “深挖上岸村 GEO，PDF。”
-- “比较甲机构和乙机构在山东的 GEO 表现。”
-- “广东本土公考 IP 和规划类 IP 的 GEO 怎么样？”
-- “把证据不足的本土机构也列出来，不要只给正式排名。”
-
-## 开发者 / Agent 入口
-
-- `SKILL.md`：完整执行协议；
-- `references/v2.1.1-stability.md`：本次稳定性/召回/报告契约补丁；
-- `references/methodology.md`：研究方法；
-- `references/data-schema.md`：v2.1 基础数据结构；
-- `references/public-exam-query-bank.md`：Query Bank；
-- `references/report-design-system.md`：报告设计；
-- `scripts/preflight.py`：三步 Preflight；
-- `scripts/score_geo.py`：评分与派生指标；
-- `scripts/generate_charts.py`：本次 Run 图表；
-- `scripts/build_report_model.py`：统一 Report Model；
-- `scripts/generate_report_docx.py` / `generate_report_pdf.py` / `generate_report_html.py`：三 Renderer；
-- `scripts/validate_run.py`：Research + Report Contract + Renderer 校验；
-- `scripts/test_v211.py`：v2.1.1 回归。
-
-## 验收命令
+## 核心运行顺序
 
 ```bash
-python3 -m py_compile scripts/*.py
-python3 scripts/test_v211.py
+python3 scripts/preflight.py ...
+# Agent 完成 Seed + System Discovery，建立并让用户确认 market_universe.csv
+python3 scripts/compute_ai_metrics.py <run-dir>
+python3 scripts/score_assets.py <run-dir>
+python3 scripts/generate_charts.py <run-dir>
+python3 scripts/build_report_model.py <run-dir>
+python3 scripts/generate_report_docx.py <run-dir>
 python3 scripts/validate_run.py <run-dir> --strict
 ```
 
-自动校验通过后仍需做 Visual QA，尤其是 HTML 溢出、Word/PDF 裁切与坏分页。fixture 只验证规则，不能冒充真实地区 Measurement。
+## 依赖
+
+核心研究、数据校验、AI Metrics：Python 标准库即可。
+
+Word：
+
+```bash
+pip install python-docx
+```
+
+图表：
+
+```bash
+pip install matplotlib
+```
+
+图表脚本会优先使用系统中可用的中文字体；macOS 建议存在 PingFang SC，Windows 可使用 Microsoft YaHei，Linux 建议安装 Noto Sans CJK。
+
+## 测试
+
+```bash
+python -m py_compile scripts/*.py
+python scripts/test_v22.py
+```
+
+缺少 Word / 图表第三方依赖时，相应集成测试可 `SKIP`，但核心研究协议测试仍必须运行；发布说明必须列出被跳过项。
+
+## 发布前真实回归
+
+v2.2 不允许只看 Synthetic Test 全绿就发布。至少做：
+
+1. Synthetic Test；
+2. 广东 / 天津 / 山东真实地区盲跑；
+3. 盲跑结束后再做 Golden Reality Check。
+
+Golden Fixture **只能用于发布后验检查，生产逻辑不得读取、不得注入 Candidate、不得加分。**
