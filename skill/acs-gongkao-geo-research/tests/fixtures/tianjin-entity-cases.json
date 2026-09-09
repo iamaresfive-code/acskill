@@ -1,0 +1,24 @@
+{
+  "entities": [
+    {
+      "entity_id": "I101",
+      "canonical_name": "津仕教育",
+      "aliases": "天津津仕|津仕公考",
+      "legal_name": "",
+      "former_names": ""
+    },
+    {
+      "entity_id": "I102",
+      "canonical_name": "北学优仕",
+      "aliases": "北宋公考|天津北宋",
+      "legal_name": "天津北学优仕教育科技有限公司",
+      "former_names": ""
+    }
+  ],
+  "cases": [
+    {"input": "天津 津仕", "status": "resolved", "entity_id": "I101"},
+    {"input": "北宋公考", "status": "resolved", "entity_id": "I102"},
+    {"input": "北宋历史", "status": "unmatched"},
+    {"input": "辽宁某机构", "status": "unmatched"}
+  ]
+}

@@ -1,0 +1,2 @@
+relation_id,source_entity_id,relation_type,target_entity_id,relation_status,valid_from,valid_to,evidence_ids,confidence,notes
+REL001,I002,brand-of,C001,current,2026,,E003,High,高校企业页以天津北学优仕为主体并使用北宋教育品牌名

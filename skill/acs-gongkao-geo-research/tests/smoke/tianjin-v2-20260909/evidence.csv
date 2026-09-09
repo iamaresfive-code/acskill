@@ -1,0 +1,7 @@
+evidence_id,entity_id,institution,query_id,query,query_type,source_title,source_url,source_domain,published_date,accessed_date,source_grade,independent,claim_type,concepts,duplicate_group,duplicate_reason,review_status,counting_scope,notes
+E001,I001,津仕教育,QD08,天津公考培训招聘讲师,generic,申论助教-津仕培训学校（天津）有限公司,https://career.tjcu.edu.cn/correcruit/content/id/12390.html,career.tjcu.edu.cn,2026-05-19,2026-09-09,A1,true,fact,"[""公考讲师"",""申论"""]",,,,entity,仅支持招聘主体和岗位事实
+E002,I001,津仕教育,QV01,"""津仕培训学校（天津）有限公司"" 公考",brand,企业主页-津仕培训学校（天津）有限公司,https://career.tjcu.edu.cn/company/index/id/6666.html,career.tjcu.edu.cn,unknown,2026-09-09,A1,true,institution-claim,"[""公务员"",""选调生"",""事业编"""]",,,,entity,高校托管企业页；业务描述仍是企业自述
+E003,I002,北宋教育,QV02,"""天津北学优仕培训学校有限公司""",brand,企业主页-天津北学优仕培训学校有限公司,https://career.hebut.edu.cn/company/index/id/17987.html,career.hebut.edu.cn,unknown,2026-09-09,A1,true,institution-claim,"[""北宋教育"",""选调生"""]",,,,entity,支持公司与品牌映射；业绩数字为企业自述
+E004,I002,北宋教育,QV02,"""天津北学优仕培训学校有限公司""",brand,天津科技大学2025届毕业生春季校园双选会邀请函,https://jy.tust.edu.cn/recruitment/content/type/1/id/466.html,jy.tust.edu.cn,2025-04-01,2026-09-09,A1,true,fact,"[""公司主体"",""高校招聘"""]",,,,entity,仅支持该公司作为参会企业出现
+E005,I002,北宋教育,QV02,"""天津北学优仕培训学校有限公司""",brand,CCtalk课程聚合页,https://m.xcommon.com/,m.xcommon.com,unknown,2026-09-09,B,true,proxy-metric,"[""政治理论"",""时政"""]",,,,content,支持北宋公考课程在平台可见
+E006,I003,津极公考,QV03,"""津极公考"" 天津",brand,津极公考教育官网,https://www.jjgk022.com/,jjgk022.com,unknown,2026-09-09,A2,false,institution-claim,"[""天津市考"",""事业单位"",""选调生"""]",,,,entity,官网自述；不验证教学效果和通过率

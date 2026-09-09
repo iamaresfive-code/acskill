@@ -1,0 +1,5 @@
+entity_id,canonical_name,entity_type,aliases,legal_name,former_names,official_domain,region,parent_entity_id,entity_status,disambiguation_notes,source_ids,notes
+I001,津仕教育,institution,津仕公考,津仕培训学校（天津）有限公司,,,天津市,,active,已用高校就业页中的公司名和公考业务排除其他含津仕名称主体,E001|E002,
+I002,北宋教育,institution,北宋公考,,,,天津市,C001,active,北宋也是历史朝代；仅在同时出现公考课程或北学优仕公司主体时归并,E003|E004|E005,
+I003,津极公考,brand,津极教育,,,jjgk022.com,天津市,,active,以官网域名及天津公职考试内容确认；不与津仕归并,E006,
+C001,天津北学优仕培训学校有限公司,company,北学优仕,,,,天津市,,active,公司主体与北宋教育品牌关系由高校企业页直接陈述,E003,
