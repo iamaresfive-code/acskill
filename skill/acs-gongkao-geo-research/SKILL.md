@@ -9,7 +9,7 @@ metadata:
 
 版本定位：**Market Universe + AI Answer Measurement + Single DOCX Report**。
 
-v2.2 的首要原则：**先确定研究谁，再测 AI 到底提不提；公开网页用于解释，不再替代 AI Answer。**
+首要原则：**先确定研究谁，再测 AI 到底提不提；公开网页用于解释，不再替代 AI Answer。**
 
 ## 0. 启动协议：三步 Preflight，Word 固定输出
 
@@ -27,7 +27,7 @@ official_output_format = docx
 
 不再询问 Word/PDF/HTML，不正式生成 HTML 或 PDF。
 
-如果用户明确没有 Seed，让系统自己发现，则进入 `blind-discovery-scan`。这类结果必须命名为“公开网络发现扫描”，不得称为完整地区竞争全景。
+用户明确没有 Seed、要求系统自己发现时，进入 `blind-discovery-scan`。这类结果必须命名为“公开网络发现扫描”，不得称为完整地区竞争全景。
 
 ## 1. User Seed 的作用边界
 
@@ -40,10 +40,15 @@ official_output_format = docx
 它不得：
 
 - 提高 AI 提名率；
-- 提高任何 Asset Score；
+- 提高 Asset Score；
 - 提高 Source Grade；
 - 自动变成本土核心；
-- 自动进入榜首。
+- 自动进入榜首；
+- **自动获得 `included`。**
+
+Seed 初次建池若尚未完成 Rescue，应为 `unresolved + needs-review`。完成实体解析和市场核验后，再决定 included / observation / unresolved。
+
+当 Seed 与 System Discovery 同名时，必须字段级合并：保留 `user_seed=true`，同时吸收 Discovery 的 aliases、scope、role、salience_basis、notes 等非空证据；不得只把 user_seed 改 true 后丢掉 Discovery 行。
 
 ## 2. v2.2 总流程
 
@@ -58,12 +63,18 @@ Entity Resolution + Market Salience Review
 ↓
 Market Universe Draft
 ↓
+refresh_universe_review.py
+↓
+Stage 1 Validation
+↓
 USER CONFIRMATION GATE
 ↓
 AI Answer Measurement
 + Open-Web Asset Audit
 ↓
 20% Blind Recheck
+↓
+Stage 2 Measurement Validation
 ↓
 AI Metrics + Asset Readiness
 ↓
@@ -73,7 +84,7 @@ report_model.json
 ↓
 Single DOCX Renderer
 ↓
-Strict Validation + Visual QA
+Final Report Validation + Visual QA
 ```
 
 ## 3. Market Universe 是独立研究层
@@ -90,77 +101,91 @@ Market Universe 回答：“这个地区有哪些值得研究的主体？”
 - `salience_basis`；
 - `activity_status`；
 - `platform_native`；
-- `user_seed`。
+- `user_seed`；
+- `universe_status`；
+- `confirmation_status`。
 
 “本地实体”只能来自地域事实和市场证据。低 Recall 不等于本地。
 
-### 本地主体 Salience 参考
+`market_scope` 描述整体经营/内容覆盖范围，不等于品牌最早创立地。品牌创立于外省但当前在本地区形成稳定运营，不构成逻辑矛盾；创立地写入 evidence/notes，不应单独决定 scope。
 
-可满足以下任一组合：
+### 3.1 National Benchmark 只做代表性基准
 
-- 两个以上相互独立的本地区来源反复出现，且至少一个不是纯 SEO 榜单；
-- 有明确本地官方主体/线下运营/官方账号，并有至少一个独立外部来源；
-- 平台原生 Expert/IP 与本地区 + 科目/服务持续绑定，并有可确认身份。
+`national-benchmark` 不是“所有在本地有地址的全国品牌”。默认约 4–6 个代表性全国公考品牌；超过 8 个必须解释每一个为什么都具有当前、明确的“地区 × 公考”业务相关性。
 
-纯全国 SEO 榜单中出现，不足以自动成为本地核心竞争者。
+只有当地职业培训分校/办公地址，不足以证明当地公考业务相关性。此类主体可以保留 Observation，等待真实 AI Answer 是否主动提名。
 
-## 4. Market Universe Confirmation 是正式 Gate
+### 3.2 Local / Regional Institution
 
-System Discovery 后必须先给用户看候选主体清单，至少分：
+至少需要“实体可解析 + 当前地区公考业务”两类证据。工商、官网、平台官方账号、校区、课程、师资都可参与，但纯营销榜单不足以证明本地市场地位。
 
-- 全国基准；
-- 本地 / 区域机构；
-- Expert / IP；
-- 历史 / 观察主体。
+### 3.3 Expert / IP
 
-用户可补充、删除、改分类。确认后：
+System Discovery 发现的 IP 若不是 User Seed，主榜纳入必须体现**持续的 Region × Public Exam 主题绑定**。
+
+单条视频、单期播客、一次本地上岸经历，不足以自动进入 Expert/IP 主榜；默认 Observation。
+
+持续系列内容、明确教学/咨询服务、跨平台稳定身份、机构师资身份、独立第三方 Authority 等可以支持 included。
+
+## 4. Market Universe Review Contract + 用户确认 Gate
+
+Agent 完成/修订 `market_universe.csv` 后必须执行：
+
+```bash
+python3 scripts/refresh_universe_review.py <run-dir>
+python3 scripts/validate_run.py <run-dir> --stage universe --strict
+```
+
+`universe_review.json` 必须由 Skill 脚本产生，至少包含 distribution、A/B/C/D 四个互斥 buckets、SEO-only downgraded、unresolved_or_weak、bucket_audit。
+
+四个 bucket 必须互斥且并集等于 `market_universe.csv` 全部主体。不得由执行者另写不可比的临时分桶脚本替代正式 Review Contract。
+
+然后把 Review 给用户。用户可补充、删除、改分类。
+
+用户确认后运行：
+
+```bash
+python3 scripts/confirm_market_universe.py <run-dir> --approved-by user
+```
+
+写入：
 
 ```text
 market_universe_confirmed = true
 measurement_allowed = true
 ```
 
-未确认时禁止正式 AI Measurement；validator 必须报错。
+未确认时禁止正式 AI Measurement。
 
 ## 5. AI Answer Measurement 是核心 GEO
 
-正式地区 GEO 使用固定无品牌问题，保存每个 Engine/Model 的原始回答：
+正式地区 GEO 使用固定无品牌问题，保存每个 Engine/Model 的原始回答到 `ai_answers.jsonl`，实体提名写 `ai_mentions.csv`。
 
-```text
-ai_answers.jsonl
-```
-
-每个实体在回答中的显式提名写：
-
-```text
-ai_mentions.csv
-```
-
-允许计入提名的 `match_method`：
+允许计入正文 Nomination 的 `match_method`：
 
 - `explicit-name`
 - `verified-alias`
 
-仅 citation 中出现但正文未提名，不能算 Nomination；可单独作为 Citation Evidence。
+仅 citation 中出现但正文未提名，不能算正文 Nomination。
 
 ### 核心指标
 
-- `Nomination Rate = 被提名 answer cells / 全部对应 answer cells`
+- `Nomination Rate`
 - `Top3 Rate`
 - `First Mention Rate`
 - `Citation Rate`
 - `Cross-model Consistency`
 
-不再把 Web Search Proxy 的命中率称为真实 AI GEO Recall。
+不把 Web Search Proxy 的命中率称为真实 AI GEO Recall，也不再造黑箱“AI 总分”。
 
-### 采样模式标签
+### 采样模式
 
 - >=3 个独立 AI/AI Search 引擎：`multi-engine`
 - 2 个：`limited-multi-engine`
 - 1 个：`single-engine`
 - 0 个：`asset-audit-only`
 
-如果没有真实 AI Answer Measurement，不得生成“真实 AI GEO 排名”。
+没有真实 AI Answer Measurement，不得生成“真实 AI GEO 排名”。
 
 ## 6. Open-Web 只做解释层，Result Item 与网页正文物理分离
 
@@ -198,6 +223,8 @@ page_mentions.csv
 账号 → 人物 → 机构 → 地区 → 科目/服务 → 概念
 ```
 
+发现候选不等于自动纳入主榜。
+
 ## 8. Candidate Rescue
 
 以下任一主体若仍 unresolved，Universe Confirmation 前必须专项 Rescue：
@@ -230,19 +257,13 @@ Asset Readiness 满分 100，但不是最终 AI GEO 排名：
 
 ## 11. Concept Ownership
 
-真正重要的不只是总榜。对高价值用户意图形成 `concept_ownership.csv`，至少记录：
+对高价值用户意图形成 `concept_ownership.csv`，至少记录 concept、entity、strength、evidence/query 支持、时间边界。
 
-- concept；
-- entity；
-- strength；
-- evidence/query 支持；
-- 时间边界。
-
-例如“申论”“材料结构化”“选岗”“地市待遇”“公考规划”等必须来自本次 Universe 与真实资料，不写死任何地区案例。
+例如“申论”“材料结构化”“选岗”“地市待遇”“公考规划”等必须来自本次 Universe 与真实资料，不写死地区案例。
 
 ## 12. 报告分榜，不混淆全国与本土
 
-正式 Word 顺序至少包含：
+正式 Word 至少包含：
 
 1. 封面
 2. 研究概览 / Executive Summary
@@ -269,29 +290,46 @@ Research Data
 → deliverables/report.docx
 ```
 
-不运行正式 HTML/PDF Renderer。若用户需要 PDF，让其从最终 Word 导出，不在 Skill 内维护第二套版式。
+不运行正式 HTML/PDF Renderer。若用户需要 PDF，让其从最终 Word 导出。
 
-图表面向 A4 Word，正文最大宽度约 165mm；宽表优先改成短指标表 + 诊断卡，不允许挤压超宽表格。
+## 14. Validator 分阶段门禁
 
-## 14. Validator 五层门禁
+### Stage 1：Universe
 
-`validate_run.py --strict` 检查：
+```bash
+python3 scripts/validate_run.py <run-dir> --stage universe --strict
+```
 
-1. Preflight；
-2. Market Universe / Seed 不消失 / 本地属性有事实依据；
-3. AI Answer + SERP Result Item Sampling Integrity；
-4. 20% Blind Recheck；
-5. Report Contract + DOCX-only Delivery。
+只检查 Preflight、Seed 不消失、Market Universe、Review buckets。Measurement 尚未开始时，不因缺 queries/AI/report/docx 报几十个预期错误。
+
+### Stage 2：Measurement
+
+```bash
+python3 scripts/validate_run.py <run-dir> --stage measurement --strict
+```
+
+要求 Universe 已确认，并检查 AI Answer、SERP Result Item、20% Recheck、AI Metrics。
+
+### Final：Report
+
+```bash
+python3 scripts/validate_run.py <run-dir> --stage report --strict
+```
+
+再检查 Report Contract、Metrics 不丢失、DOCX-only、占位文案。
 
 典型 ERROR：
 
 - Universe 未确认却开始 Measurement；
+- Review 分桶重叠或没有覆盖全部主体；
 - 一个 Query/Engine/Rank 出现多个 Result Item；
 - SERP Mention 实际来自网页正文；
 - User Seed 从 Universe 消失；
 - Report 把 national/unknown 主体写成本地机构；
 - AI Metrics 有主体但 Report Model 丢失；
 - deliverables 同时出现正式 PDF/HTML。
+
+全国 Benchmark 超过 8 家触发 `benchmark-sprawl` warning，要求人工复核是否把“全国品牌有本地地址”误当成“代表性基准”。
 
 ## 15. 发布回归
 
@@ -313,3 +351,5 @@ Golden Reality Fixture 只允许在盲跑结束后用于后验检查，生产逻
 GEO 不代表教学质量、通过率、市场份额、招生量或口碑。
 
 用户提供“招生量大”“市场很火”等行业信息可以帮助确定 Seed / Market Salience，但若要写成报告事实，必须明确来源类型：用户判断、机构自述、代理指标或公开独立事实。
+
+历史 references 文档状态以 `references/README.md` 为准；legacy/deprecated 文档不得覆盖 v2.2 当前协议。
