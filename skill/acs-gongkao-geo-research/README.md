@@ -105,7 +105,12 @@ v2.2 采用字段级合并：
 - Top3 Rate：进入前三的比例；
 - First Mention Rate：首提率；
 - Citation Rate：被提及时有实体关联引用的比例；
-- Cross-model Consistency：跨模型一致性。
+- Engine Coverage Rate：多少个已采样引擎至少提名过一次；
+- Cross-model Consistency：在至少一个引擎提名的 Query 上，不同引擎共同提名的一致程度。
+
+Top3 / First Mention 以 `mention_rank` 为准，Validator 会检查标记与顺序是否一致。
+
+如果真实 AI 回答出现 Stage 1 Market Universe 之外的新机构/IP，必须写入 `ai_emergent_entities.csv` 并解析；不能因为“初始名单没有它”就静默忽略。resolved 后可以形成 AI Metrics，但在最终报告中单列，不回写污染预先确认的主榜。
 
 如果环境只能测一个模型，要明确写 `single-engine`；如果完全无法做 AI Answer Measurement，只能输出 Asset Audit，不能叫真实 AI GEO 排名。
 
