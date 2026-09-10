@@ -105,6 +105,8 @@ Market Universe 回答：“这个地区有哪些值得研究的主体？”
 - `universe_status`；
 - `confirmation_status`。
 
+`universe_status` 在 v2.2 只允许 `included | observation | unresolved`。不提供会让主体静默跳过 Measurement 的 `excluded` 状态；Observation / unresolved 仍保留 Measurement 资格。
+
 “本地实体”只能来自地域事实和市场证据。低 Recall 不等于本地。
 
 `market_scope` 描述整体经营/内容覆盖范围，不等于品牌最早创立地。品牌创立于外省但当前在本地区形成稳定运营，不构成逻辑矛盾；创立地写入 evidence/notes，不应单独决定 scope。
@@ -174,9 +176,26 @@ measurement_allowed = true
 - `Top3 Rate`
 - `First Mention Rate`
 - `Citation Rate`
+- `Engine Coverage Rate`
 - `Cross-model Consistency`
 
+其中 `Engine Coverage Rate` 表示“多少个已采样引擎至少提到过一次”；`Cross-model Consistency` 则衡量同一批正向 Query 上不同引擎是否共同提名，二者不能混用。
+
+`Top3` 与 `First Mention` 必须由 `mention_rank` 约束；Validator 会校验布尔字段与真实顺序一致。
+
 不把 Web Search Proxy 的命中率称为真实 AI GEO Recall，也不再造黑箱“AI 总分”。
+
+### AI-emergent competitor
+
+Stage 1 Universe 是预先确认的研究合同，但不能成为封闭名单。正式 AI Answer 中若自然出现 Stage 1 未预置的新机构/IP：
+
+1. 保存到 `ai_emergent_entities.csv`；
+2. 记录来源 `answer_id` 并完成实体解析；
+3. resolved 后允许进入 `ai_mentions.csv` / `ai_metrics.csv`；
+4. 最终报告必须单列为 AI-emergent competitors；
+5. 不得把它们回写进预先确认的 A/B/C 主榜，也不得因为不在初始 Universe 就静默忽略。
+
+这样既保持预注册 Universe 的可比性，也避免真实 AI 新竞争者被研究名单过滤掉。
 
 ### 采样模式
 
