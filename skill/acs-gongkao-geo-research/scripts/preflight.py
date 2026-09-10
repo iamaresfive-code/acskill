@@ -41,6 +41,12 @@ def make_metadata(region:str|None,seeds:list[str]|None,supplement:bool|None,seed
     meta["market_universe_confirmed"]=False
     meta["measurement_allowed"]=False
     meta["sampling_mode"]="pending"
+    # Measurement protocol is configured before Stage 2; snapshot is the non-release default.
+    meta["measurement_profile"]="snapshot"
+    meta["answer_context_mode_expected"]="pending"
+    meta["repeat_runs_expected"]=1
+    meta["fresh_context_required"]=False
+    meta["ai_engine_access_checked"]=False
     ready=all(bool(meta.get(k)) for k in ("region_confirmed","seed_entities_confirmed","discovery_supplement_confirmed"))
     meta["run_status"]="universe-building" if ready else "preflight-incomplete"
     return meta
