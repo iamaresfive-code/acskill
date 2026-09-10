@@ -100,6 +100,11 @@ def render(run:Path,out:Path):
         h("Observation 中被 AI 实际提名的主体",2)
         table(["主体","提名率","Top3率","市场范围","Stage 1 状态"],[[x.get("canonical_name"),pct(x.get("nomination_rate")),pct(x.get("top3_rate")),x.get("market_scope"),x.get("universe_status")] for x in emergent],widths=[52,28,28,28,30],font=8.5)
         d.add_paragraph("这些主体未进入 Stage 1 主榜，但真实 AI Answer 已出现提名，应在最终解释中单独复核是否需要升级为正式竞争主体。")
+    ai_new=model.get("ai_visible_emergent",[])
+    if ai_new:
+        h("AI 回答自然带出的新竞争主体",2)
+        table(["主体","类型","提名率","Top3率","市场范围","来源回答"],[[x.get("canonical_name"),x.get("measurement_target") or x.get("entity_type"),pct(x.get("nomination_rate")),pct(x.get("top3_rate")),x.get("market_scope"),x.get("source_answer_ids")] for x in ai_new],widths=[42,22,24,24,24,36],font=8)
+        d.add_paragraph("这些主体不在 Stage 1 已确认 Universe 中，而是在正式 AI Answer Measurement 中自然出现。它们不得回写污染预先确认的主榜，但必须保留、解析并单独披露。")
     h("观察组 / 未进入正式比较的主体",2);obs=model.get("observation_group",[])
     if obs:table(["主体","状态","市场范围","AI提名率","原因/备注"],[[x.get("canonical_name"),x.get("universe_status"),x.get("market_scope"),pct(x.get("nomination_rate")),x.get("notes") or x.get("salience_basis")] for x in obs],widths=[38,24,24,24,58],font=8)
     h("研究资产清单",2)
