@@ -5,190 +5,67 @@ from pathlib import Path
 HERE=Path(__file__).resolve().parent
 
 def load(name,file):
-    spec=importlib.util.spec_from_file_location(name,HERE/file)
-    m=importlib.util.module_from_spec(spec);sys.modules[name]=m;spec.loader.exec_module(m);return m
-
-pre=load("pre_v22","preflight.py")
-metrics=load("metrics_v22","compute_ai_metrics.py")
-assets=load("assets_v22","score_assets.py")
-validator=load("validator_v22","validate_run.py")
-modeler=load("model_v22","build_report_model.py")
-universe_builder=load("universe_v22","build_market_universe.py")
+    spec=importlib.util.spec_from_file_location(name,HERE/file);m=importlib.util.module_from_spec(spec);sys.modules[name]=m;spec.loader.exec_module(m);return m
+pre=load('pre_v22','preflight.py');cfg=load('cfg_v22','configure_measurement.py');ub=load('ub_v22','build_market_universe.py');met=load('met_v22','compute_ai_metrics.py');val=load('val_v22','validate_run.py');modeler=load('model_v22','build_report_model.py');assets=load('assets_v22','score_assets.py')
 
 def wcsv(p,fields,rows):
-    with p.open("w",encoding="utf-8-sig",newline="") as f:
-        w=csv.DictWriter(f,fieldnames=fields);w.writeheader();w.writerows(rows)
+    with p.open('w',encoding='utf-8-sig',newline='') as f:w=csv.DictWriter(f,fieldnames=fields);w.writeheader();w.writerows(rows)
 def rcsv(p):
-    with p.open("r",encoding="utf-8-sig",newline="") as f:return list(csv.DictReader(f))
-def wjsonl(p,rows):p.write_text("\n".join(json.dumps(x,ensure_ascii=False) for x in rows)+"\n",encoding="utf-8")
+    with p.open('r',encoding='utf-8-sig',newline='') as f:return list(csv.DictReader(f))
+def wjsonl(p,rows):p.write_text('\n'.join(json.dumps(x,ensure_ascii=False) for x in rows)+'\n',encoding='utf-8')
 
-def build(run:Path):
-    meta=pre.make_metadata("示例省",["甲公考","乙老师"],True)
-    meta.update({
-        "observation_date":"2026-09-10","market_universe_confirmed":True,
-        "measurement_allowed":True,"run_status":"measurement-complete",
-        "sampling_mode":"limited-multi-engine","ai_engines_expected":["engine-a","engine-b"]
-    })
-    (run/"run_metadata.json").write_text(json.dumps(meta,ensure_ascii=False,indent=2),encoding="utf-8")
-    uf=["entity_id","canonical_name","aliases","entity_type","user_seed","discovery_origin","market_scope","operating_region","market_role","activity_status","platform_native","salience_basis","universe_status","confirmation_status","notes"]
-    wcsv(run/"market_universe.csv",uf,[
-      {"entity_id":"I1","canonical_name":"甲公考","aliases":"甲教育","entity_type":"institution","user_seed":"true","discovery_origin":"user-seed","market_scope":"local","operating_region":"示例省","market_role":"local-core","activity_status":"active","platform_native":"false","salience_basis":"用户Seed+本地主体证据","universe_status":"included","confirmation_status":"confirmed","notes":""},
-      {"entity_id":"I2","canonical_name":"全国乙教育","aliases":"乙教育","entity_type":"institution","user_seed":"false","discovery_origin":"system-discovery","market_scope":"national","operating_region":"全国/示例省","market_role":"national-benchmark","activity_status":"active","platform_native":"false","salience_basis":"区域直营网点+独立来源","universe_status":"included","confirmation_status":"confirmed","notes":""},
-      {"entity_id":"P1","canonical_name":"乙老师","aliases":"乙老师公考","entity_type":"ip","user_seed":"true","discovery_origin":"user-seed","market_scope":"local","operating_region":"示例省","market_role":"expert-ip","activity_status":"active","platform_native":"true","salience_basis":"平台账号+本地主题持续内容","universe_status":"included","confirmation_status":"confirmed","notes":""},
-      {"entity_id":"O1","canonical_name":"待核机构","aliases":"","entity_type":"institution","user_seed":"false","discovery_origin":"system-discovery","market_scope":"unknown","operating_region":"","market_role":"observation","activity_status":"uncertain","platform_native":"false","salience_basis":"单一聚合页","universe_status":"observation","confirmation_status":"confirmed","notes":"证据不足"}
-    ])
-    universe_builder.write_review(run,rcsv(run/"market_universe.csv"),meta)
-
-    qf=["query_id","query_text","query_group","measurement_target","region","status"]
-    qs=[
-      {"query_id":"M1","query_text":"示例省公考机构推荐","query_group":"综合","measurement_target":"institution","region":"示例省","status":"sampled"},
-      {"query_id":"M2","query_text":"示例省面试机构推荐","query_group":"面试","measurement_target":"institution","region":"示例省","status":"sampled"},
-      {"query_id":"M3","query_text":"示例省本土公考机构","query_group":"本土","measurement_target":"institution","region":"示例省","status":"sampled"},
-      {"query_id":"P1Q","query_text":"示例省申论老师推荐","query_group":"申论","measurement_target":"ip","region":"示例省","status":"sampled"},
-      {"query_id":"P2Q","query_text":"示例省面试老师推荐","query_group":"面试","measurement_target":"ip","region":"示例省","status":"sampled"},
-      {"query_id":"P3Q","query_text":"示例省公考规划老师","query_group":"规划","measurement_target":"ip","region":"示例省","status":"sampled"}
-    ]
-    wcsv(run/"queries.csv",qf,qs)
+def fixture(run:Path):
+    m=pre.make_metadata('示例省',['甲公考','乙老师'],True);m.update({'market_universe_confirmed':True,'measurement_allowed':True,'sampling_mode':'limited-multi-engine','ai_engines_expected':['a','b'],'ai_engine_access_checked':True,'measurement_profile':'snapshot','answer_context_mode_expected':'native','repeat_runs_expected':1,'fresh_context_required':True,'observation_date':'2026-09-10'});(run/'run_metadata.json').write_text(json.dumps(m,ensure_ascii=False),encoding='utf-8')
+    uf=['entity_id','canonical_name','aliases','entity_type','user_seed','discovery_origin','market_scope','operating_region','market_role','activity_status','platform_native','salience_basis','universe_status','confirmation_status','downgrade_reason','notes']
+    us=[dict(zip(uf,['I1','甲公考','甲教育','institution','true','user-seed|system-discovery','local','示例省','local-core','active','false','本地实体+独立来源','included','confirmed','',''])),dict(zip(uf,['I2','全国乙教育','乙教育','institution','false','system-discovery','national','全国/示例省','national-benchmark','active','false','全国品牌+本地业务','included','confirmed','',''])),dict(zip(uf,['P1','乙老师','乙老师公考','ip','true','user-seed|platform-native-ip','local','示例省','expert-ip','active','true','持续本地主题','included','confirmed','',''])),dict(zip(uf,['O1','观察机构','','institution','false','system-discovery','unknown','','observation','uncertain','false','单一聚合页','observation','confirmed','seo-only','证据不足']))]
+    wcsv(run/'market_universe.csv',uf,us);ub.write_review(run,us,m)
+    qf=['query_id','query_text','query_group','measurement_target','region','status'];qs=[{'query_id':'M1','query_text':'示例省公考机构推荐','query_group':'综合','measurement_target':'institution','region':'示例省','status':'sampled'},{'query_id':'M2','query_text':'示例省面试机构推荐','query_group':'面试','measurement_target':'institution','region':'示例省','status':'sampled'},{'query_id':'P1Q','query_text':'示例省申论老师推荐','query_group':'申论','measurement_target':'ip','region':'示例省','status':'sampled'},{'query_id':'P2Q','query_text':'示例省面试老师推荐','query_group':'面试','measurement_target':'ip','region':'示例省','status':'sampled'}];wcsv(run/'queries.csv',qf,qs)
     ans=[]
     for q in qs:
-        for eng in ["engine-a","engine-b"]:
-            aid=f"A-{q['query_id']}-{eng[-1]}"
-            if q["measurement_target"]=="institution":
-                text="建议关注甲公考和全国乙教育，前者本地内容更集中。"
-            else:
-                text="乙老师在本地申论和规划内容中较常被提及。"
-                if q["query_id"]=="P1Q" and eng=="engine-a":text+=" 新星老师也值得关注。"
-            ans.append({"answer_id":aid,"query_id":q["query_id"],"engine":eng,"model":eng,"sampled_at":"2026-09-10T10:00:00+08:00","response_text":text,"citations":[],"notes":""})
-    wjsonl(run/"ai_answers.jsonl",ans)
-
-    xf=["entity_id","canonical_name","aliases","measurement_target","market_scope","operating_region","resolution_status","source_answer_ids","notes"]
-    wcsv(run/"ai_emergent_entities.csv",xf,[{
-        "entity_id":"X1","canonical_name":"新星老师","aliases":"","measurement_target":"ip","market_scope":"unknown",
-        "operating_region":"","resolution_status":"resolved","source_answer_ids":"A-P1Q-a","notes":"AI Answer 自然带出，Stage 1 未预置"
-    }])
-
-    mf=["mention_id","answer_id","entity_id","mention_rank","mentioned_name","match_method","top3","first_mention","entity_correct","citation_linked","concepts","notes"]
-    ms=[];n=1
+      for eng in ['a','b']:
+        aid=f"A-{q['query_id']}-{eng}";text='建议甲公考，其次全国乙教育。' if q['measurement_target']=='institution' else '推荐乙老师。'
+        if q['query_id']=='P1Q' and eng=='a':text+=' 新星老师也可关注。'
+        ans.append({'answer_id':aid,'query_id':q['query_id'],'engine':eng,'model':eng,'sample_run':1,'context_id':aid,'fresh_context':True,'answer_context_mode':'native','sampled_at':'2026-09-10T10:00:00+08:00','response_text':text,'citations':[],'notes':''})
+    wjsonl(run/'ai_answers.jsonl',ans)
+    xf=['entity_id','canonical_name','aliases','measurement_target','market_scope','operating_region','resolution_status','source_answer_ids','source_result_ids','notes'];wcsv(run/'ai_emergent_entities.csv',xf,[{'entity_id':'X1','canonical_name':'新星老师','aliases':'','measurement_target':'ip','market_scope':'unknown','operating_region':'','resolution_status':'resolved','source_answer_ids':'A-P1Q-a','source_result_ids':'','notes':''}])
+    mf=['mention_id','answer_id','entity_id','mention_rank','nomination_rank','mentioned_name','match_method','resolution_status','mention_intent','top3','first_mention','entity_correct','citation_linked','citation_refs','concepts','notes'];ms=[];n=1
     for a in ans:
-        if a["query_id"].startswith("M"):
-            ms += [
-                {"mention_id":f"AM{n}","answer_id":a["answer_id"],"entity_id":"I1","mention_rank":1,"mentioned_name":"甲公考","match_method":"explicit-name","top3":"true","first_mention":"true","entity_correct":"true","citation_linked":"false","concepts":"本土|面试","notes":""},
-                {"mention_id":f"AM{n+1}","answer_id":a["answer_id"],"entity_id":"I2","mention_rank":2,"mentioned_name":"全国乙教育","match_method":"explicit-name","top3":"true","first_mention":"false","entity_correct":"true","citation_linked":"false","concepts":"综合","notes":""}
-            ];n+=2
-        else:
-            ms.append({"mention_id":f"AM{n}","answer_id":a["answer_id"],"entity_id":"P1","mention_rank":1,"mentioned_name":"乙老师","match_method":"explicit-name","top3":"true","first_mention":"true","entity_correct":"true","citation_linked":"false","concepts":"申论|规划","notes":""});n+=1
-            if a["answer_id"]=="A-P1Q-a":
-                ms.append({"mention_id":f"AM{n}","answer_id":a["answer_id"],"entity_id":"X1","mention_rank":2,"mentioned_name":"新星老师","match_method":"explicit-name","top3":"true","first_mention":"false","entity_correct":"true","citation_linked":"false","concepts":"申论","notes":"AI-emergent"});n+=1
-    wcsv(run/"ai_mentions.csv",mf,ms)
-
-    sf=["result_id","query_id","engine","rank","url","title","snippet","sampled_at"]
-    wcsv(run/"serp_results.csv",sf,[
-        {"result_id":"S1","query_id":"M1","engine":"web","rank":1,"url":"https://example.org/a","title":"示例省公考机构：甲公考","snippet":"甲公考本地内容介绍","sampled_at":"2026-09-10"},
-        {"result_id":"S2","query_id":"M1","engine":"web","rank":2,"url":"https://example.org/b","title":"全国乙教育示例省课程","snippet":"全国乙教育在当地设点","sampled_at":"2026-09-10"}
-    ])
-    smf=["serp_mention_id","result_id","entity_id","matched_text","match_surface","notes"]
-    wcsv(run/"serp_mentions.csv",smf,[
-        {"serp_mention_id":"SM1","result_id":"S1","entity_id":"I1","matched_text":"甲公考","match_surface":"both","notes":""},
-        {"serp_mention_id":"SM2","result_id":"S2","entity_id":"I2","matched_text":"全国乙教育","match_surface":"title","notes":""}
-    ])
-    pmf=["page_mention_id","result_id","entity_id","matched_text","page_url","notes"]
-    wcsv(run/"page_mentions.csv",pmf,[{"page_mention_id":"PM1","result_id":"S1","entity_id":"I2","matched_text":"全国乙教育","page_url":"https://example.org/a","notes":"正文中提到，但不计 SERP/AI Measurement"}])
-
-    evf=["evidence_id","entity_id","source_url","source_title","source_grade","source_owner","claim_type","counting_scope","notes"]
-    wcsv(run/"evidence.csv",evf,[
-        {"evidence_id":"E1","entity_id":"I1","source_url":"https://jia.example/about","source_title":"甲官网","source_grade":"A2","source_owner":"owned","claim_type":"entity","counting_scope":"entity","notes":""},
-        {"evidence_id":"E2","entity_id":"I1","source_url":"https://uni.example/news","source_title":"高校活动","source_grade":"A1","source_owner":"independent","claim_type":"relation","counting_scope":"entity","notes":""},
-        {"evidence_id":"E3","entity_id":"I2","source_url":"https://yi.example/local","source_title":"乙官网","source_grade":"A2","source_owner":"owned","claim_type":"entity","counting_scope":"entity","notes":""},
-        {"evidence_id":"E4","entity_id":"P1","source_url":"https://platform.example/p1","source_title":"乙老师平台页","source_grade":"B","source_owner":"platform","claim_type":"entity","counting_scope":"entity","notes":""}
-    ])
-    aif=["entity_id","canonical_name","entity_clarity","regional_semantic_density","open_web_assets","external_authority","content_depth_freshness","data_tool_assets","platform_coverage","notes"]
-    wcsv(run/"asset_inputs.csv",aif,[
-        {"entity_id":"I1","canonical_name":"甲公考","entity_clarity":22,"regional_semantic_density":18,"open_web_assets":11,"external_authority":10,"content_depth_freshness":8,"data_tool_assets":5,"platform_coverage":3,"notes":""},
-        {"entity_id":"I2","canonical_name":"全国乙教育","entity_clarity":23,"regional_semantic_density":10,"open_web_assets":14,"external_authority":8,"content_depth_freshness":8,"data_tool_assets":6,"platform_coverage":2,"notes":""},
-        {"entity_id":"P1","canonical_name":"乙老师","entity_clarity":18,"regional_semantic_density":19,"open_web_assets":7,"external_authority":7,"content_depth_freshness":9,"data_tool_assets":3,"platform_coverage":5,"notes":""}
-    ])
-    cf=["concept","entity_id","canonical_name","strength","evidence_ids","notes"]
-    wcsv(run/"concept_ownership.csv",cf,[
-        {"concept":"本地面试","entity_id":"I1","canonical_name":"甲公考","strength":0.8,"evidence_ids":"E1|E2","notes":""},
-        {"concept":"公考规划","entity_id":"P1","canonical_name":"乙老师","strength":0.9,"evidence_ids":"E4","notes":""}
-    ])
-    rf=["recheck_id","sample_type","source_id","first_decision","second_decision","disagreement","resolution","recheck_by","notes"]
-    wcsv(run/"rechecks.csv",rf,[
-        {"recheck_id":"R1","sample_type":"ai-answer","source_id":ans[0]["answer_id"],"first_decision":"I1,I2","second_decision":"I1,I2","disagreement":"false","resolution":"","recheck_by":"reviewer-2","notes":"blind"},
-        {"recheck_id":"R2","sample_type":"ai-answer","source_id":ans[4]["answer_id"],"first_decision":"I1,I2","second_decision":"I1","disagreement":"true","resolution":"按显式品牌名规则保留 I2","recheck_by":"reviewer-2","notes":"blind"},
-        {"recheck_id":"R3","sample_type":"ai-answer","source_id":ans[8]["answer_id"],"first_decision":"P1,X1","second_decision":"P1,X1","disagreement":"false","resolution":"","recheck_by":"reviewer-2","notes":"blind"}
-    ])
-    metrics.compute(run);assets.score(run);modeler.build(run)
-
-def test_seed_discovery_merge():
-    with tempfile.TemporaryDirectory() as td:
-        run=Path(td);meta=pre.make_metadata("示例省",["甲公考"],True)
-        (run/"run_metadata.json").write_text(json.dumps(meta,ensure_ascii=False),encoding="utf-8")
-        fields=["entity_id","canonical_name","aliases","entity_type","market_scope","operating_region","market_role","activity_status","platform_native","salience_basis","universe_status","discovery_origin","notes"]
-        wcsv(run/"discovery_candidates.csv",fields,[{"entity_id":"D1","canonical_name":"甲公考","aliases":"甲教育","entity_type":"institution","market_scope":"local","operating_region":"示例省","market_role":"local-active","activity_status":"active","platform_native":"false","salience_basis":"官网+本地课程","universe_status":"included","discovery_origin":"system-discovery","notes":"发现证据"}])
-        universe_builder.build(run);r=rcsv(run/"market_universe.csv")[0]
-        assert r["user_seed"]=="true" and r["market_scope"]=="local" and "官网+本地课程" in r["salience_basis"] and "system-discovery" in r["discovery_origin"]
-        review=json.loads((run/"universe_review.json").read_text(encoding="utf-8"))
-        assert review["bucket_audit"]["complete"] is True
-        assert review["system_discovery_count"]==0
-        assert review["seed_also_discovered_count"]==1
-
-def test_cross_model_consistency():
-    with tempfile.TemporaryDirectory() as td:
-        run=Path(td)
-        uf=["entity_id","canonical_name","aliases","entity_type","user_seed","discovery_origin","market_scope","operating_region","market_role","activity_status","platform_native","salience_basis","universe_status","confirmation_status","notes"]
-        wcsv(run/"market_universe.csv",uf,[{"entity_id":"I1","canonical_name":"甲公考","aliases":"","entity_type":"institution","user_seed":"false","discovery_origin":"system-discovery","market_scope":"local","operating_region":"示例省","market_role":"local-active","activity_status":"active","platform_native":"false","salience_basis":"x","universe_status":"included","confirmation_status":"confirmed","notes":""}])
-        wcsv(run/"ai_emergent_entities.csv",["entity_id","canonical_name","aliases","measurement_target","market_scope","operating_region","resolution_status","source_answer_ids","notes"],[])
-        qf=["query_id","query_text","query_group","measurement_target","region","status"]
-        wcsv(run/"queries.csv",qf,[{"query_id":"Q1","query_text":"q1","query_group":"g","measurement_target":"institution","region":"示例省","status":"sampled"},{"query_id":"Q2","query_text":"q2","query_group":"g","measurement_target":"institution","region":"示例省","status":"sampled"}])
-        ans=[
-            {"answer_id":"A1","query_id":"Q1","engine":"a","response_text":"甲公考"},{"answer_id":"A2","query_id":"Q1","engine":"b","response_text":"甲公考"},
-            {"answer_id":"A3","query_id":"Q2","engine":"a","response_text":"甲公考"},{"answer_id":"A4","query_id":"Q2","engine":"b","response_text":"其他机构"}
-        ];wjsonl(run/"ai_answers.jsonl",ans)
-        mf=["mention_id","answer_id","entity_id","mention_rank","mentioned_name","match_method","top3","first_mention","entity_correct","citation_linked","concepts","notes"]
-        wcsv(run/"ai_mentions.csv",mf,[
-            {"mention_id":"m1","answer_id":"A1","entity_id":"I1","mention_rank":1,"mentioned_name":"甲公考","match_method":"explicit-name","top3":"true","first_mention":"true","entity_correct":"true","citation_linked":"false","concepts":"","notes":""},
-            {"mention_id":"m2","answer_id":"A2","entity_id":"I1","mention_rank":1,"mentioned_name":"甲公考","match_method":"explicit-name","top3":"true","first_mention":"true","entity_correct":"true","citation_linked":"false","concepts":"","notes":""},
-            {"mention_id":"m3","answer_id":"A3","entity_id":"I1","mention_rank":1,"mentioned_name":"甲公考","match_method":"explicit-name","top3":"true","first_mention":"true","entity_correct":"true","citation_linked":"false","concepts":"","notes":""}
-        ])
-        row=metrics.compute(run)[0]
-        assert float(row["nomination_rate"])==0.75
-        assert float(row["engine_coverage_rate"])==1.0
-        assert float(row["cross_model_consistency"])==0.75
+      if a['query_id'].startswith('M'):
+        for eid,name,rank in [('I1','甲公考',1),('I2','全国乙教育',2)]:ms.append({'mention_id':f'AM{n}','answer_id':a['answer_id'],'entity_id':eid,'mention_rank':rank,'nomination_rank':rank,'mentioned_name':name,'match_method':'explicit-name','resolution_status':'resolved','mention_intent':'recommended','top3':'true','first_mention':'true' if rank==1 else 'false','entity_correct':'true','citation_linked':'false','citation_refs':'','concepts':'','notes':''});n+=1
+      else:
+        ms.append({'mention_id':f'AM{n}','answer_id':a['answer_id'],'entity_id':'P1','mention_rank':1,'nomination_rank':1,'mentioned_name':'乙老师','match_method':'explicit-name','resolution_status':'resolved','mention_intent':'recommended','top3':'true','first_mention':'true','entity_correct':'true','citation_linked':'false','citation_refs':'','concepts':'','notes':''});n+=1
+        if a['answer_id']=='A-P1Q-a':ms.append({'mention_id':f'AM{n}','answer_id':a['answer_id'],'entity_id':'X1','mention_rank':2,'nomination_rank':2,'mentioned_name':'新星老师','match_method':'explicit-name','resolution_status':'resolved','mention_intent':'listed','top3':'true','first_mention':'false','entity_correct':'true','citation_linked':'false','citation_refs':'','concepts':'','notes':''});n+=1
+    wcsv(run/'ai_mentions.csv',mf,ms)
+    sf=['result_id','query_id','engine','rank','url','title','snippet','sampled_at'];wcsv(run/'serp_results.csv',sf,[{'result_id':'S1','query_id':'M1','engine':'web','rank':1,'url':'https://example.org/a','title':'甲公考','snippet':'甲公考','sampled_at':'2026-09-10'},{'result_id':'S2','query_id':'M1','engine':'web','rank':2,'url':'https://example.org/b','title':'全国乙教育','snippet':'全国乙教育','sampled_at':'2026-09-10'}])
+    smf=['serp_mention_id','result_id','entity_id','matched_text','match_surface','notes'];wcsv(run/'serp_mentions.csv',smf,[{'serp_mention_id':'SM1','result_id':'S1','entity_id':'I1','matched_text':'甲公考','match_surface':'both','notes':''}])
+    pmf=['page_mention_id','result_id','entity_id','matched_text','page_url','notes'];wcsv(run/'page_mentions.csv',pmf,[])
+    ef=['evidence_id','entity_id','source_url','source_title','source_grade','source_owner','claim_type','counting_scope','notes'];wcsv(run/'evidence.csv',ef,[{'evidence_id':'E1','entity_id':'I1','source_url':'https://jia.example','source_title':'甲','source_grade':'A2','source_owner':'owned','claim_type':'entity','counting_scope':'entity','notes':''}])
+    rf=['recheck_id','sample_type','source_id','first_decision','second_decision','disagreement','resolution','recheck_by','notes'];wcsv(run/'rechecks.csv',rf,[{'recheck_id':'R1','sample_type':'ai-answer','source_id':ans[0]['answer_id'],'first_decision':'ok','second_decision':'ok','disagreement':'false','resolution':'','recheck_by':'r2','notes':''},{'recheck_id':'R2','sample_type':'ai-answer','source_id':ans[1]['answer_id'],'first_decision':'ok','second_decision':'ok','disagreement':'false','resolution':'','recheck_by':'r2','notes':''}])
+    af=['entity_id','canonical_name','entity_clarity','regional_semantic_density','open_web_assets','external_authority','content_depth_freshness','data_tool_assets','platform_coverage','notes'];wcsv(run/'asset_inputs.csv',af,[{'entity_id':'I1','canonical_name':'甲公考','entity_clarity':20,'regional_semantic_density':18,'open_web_assets':10,'external_authority':10,'content_depth_freshness':8,'data_tool_assets':5,'platform_coverage':3,'notes':''},{'entity_id':'I2','canonical_name':'全国乙教育','entity_clarity':20,'regional_semantic_density':10,'open_web_assets':10,'external_authority':10,'content_depth_freshness':8,'data_tool_assets':5,'platform_coverage':3,'notes':''},{'entity_id':'P1','canonical_name':'乙老师','entity_clarity':18,'regional_semantic_density':18,'open_web_assets':8,'external_authority':6,'content_depth_freshness':8,'data_tool_assets':3,'platform_coverage':5,'notes':''}]);assets.score(run)
+    cf=['concept','entity_id','canonical_name','strength','evidence_ids','notes'];wcsv(run/'concept_ownership.csv',cf,[]);met.compute(run);modeler.build(run)
 
 def main():
-    checks=0;skips=[]
-    pre.self_test();checks+=1
-    test_seed_discovery_merge();checks+=1
-    test_cross_model_consistency();checks+=1
+    checks=0;skips=[];pre.self_test();checks+=1
     with tempfile.TemporaryDirectory() as td:
-        run=Path(td);build(run);rows=rcsv(run/"ai_metrics.csv")
-        assert any(r["entity_id"]=="I1" and float(r["nomination_rate"])==1.0 for r in rows);checks+=1
-        assert any(r["entity_id"]=="X1" and r["universe_status"]=="ai-emergent" and float(r["nomination_rate"])>0 for r in rows);checks+=1
-        assert not any(r["entity_id"]=="I2" and r["result_id"]=="S1" for r in rcsv(run/"serp_mentions.csv"));checks+=1
-        assert next(r for r in rcsv(run/"market_universe.csv") if r["entity_id"]=="I2")["market_scope"]=="national";checks+=1
-        assert not [x for x in validator.validate(run,True,"universe") if x.level in {"error","warning"}];checks+=1
-        assert not [x for x in validator.validate(run,True,"measurement") if x.level in {"error","warning"}];checks+=1
-        model=json.loads((run/"report_model.json").read_text(encoding="utf-8"))
-        assert len(model["market_universe"]["national_benchmarks"])==1 and len(model["market_universe"]["local_institutions"])==1 and len(model["market_universe"]["expert_ip"])==1;checks+=1
-        assert any(x.get("entity_id")=="X1" for x in model["ai_visible_emergent"]);checks+=1
-        sr=rcsv(run/"serp_results.csv");sr.append(dict(sr[0],result_id="S3",url="https://example.org/c"));wcsv(run/"serp_results.csv",list(sr[0].keys()),sr)
-        assert any(x.code=="serp-rank-duplicate" for x in validator.validate(run,stage="measurement"));checks+=1
-        sr=sr[:-1];wcsv(run/"serp_results.csv",list(sr[0].keys()),sr)
-        meta=json.loads((run/"run_metadata.json").read_text(encoding="utf-8"));meta["market_universe_confirmed"]=False;(run/"run_metadata.json").write_text(json.dumps(meta,ensure_ascii=False),encoding="utf-8")
-        assert any(x.code=="universe-not-confirmed" for x in validator.validate(run,stage="measurement"));checks+=1
-        meta["market_universe_confirmed"]=True;(run/"run_metadata.json").write_text(json.dumps(meta,ensure_ascii=False),encoding="utf-8")
-        mrows=rcsv(run/"ai_mentions.csv");mrows[0]["top3"]="false";wcsv(run/"ai_mentions.csv",list(mrows[0].keys()),mrows)
-        assert any(x.code=="top3-rank-mismatch" for x in validator.validate(run,stage="measurement"));checks+=1
-        mrows[0]["top3"]="true";wcsv(run/"ai_mentions.csv",list(mrows[0].keys()),mrows)
-        try:
-            charts=load("charts_v22","generate_charts.py");docxr=load("docx_v22","generate_report_docx.py")
-            charts.generate(run);docxr.render(run,run/"deliverables"/"report.docx")
-            issues=validator.validate(run,True,"report")
-            assert not [x for x in issues if x.level in {"error","warning"}],[(x.level,x.code,x.message) for x in issues]
-            checks+=1
-        except Exception as e:skips.append(f"DOCX/图表集成测试 SKIP: {e}")
-    print(f"PASS: GEO v2.2 {checks} 项核心回归通过")
-    for x in skips:print(x)
+      r=Path(td);m=pre.make_metadata('广东',['甲'],True);(r/'run_metadata.json').write_text(json.dumps(m,ensure_ascii=False),encoding='utf-8');o=cfg.configure(r,['a'],'external-search-augmented','snapshot',1,False);assert o['sampling_mode']=='single-engine';checks+=1
+      try:cfg.configure(r,['a'],'native','release',2,True);raise AssertionError
+      except ValueError:checks+=1
+    with tempfile.TemporaryDirectory() as td:
+      r=Path(td);fixture(r);assert not [x for x in val.validate(r,True,'universe') if x.level in {'error','warning'}];checks+=1;assert not [x for x in val.validate(r,True,'measurement') if x.level in {'error','warning'}];checks+=1
+      rows=rcsv(r/'ai_metrics.csv');assert next(x for x in rows if x['entity_id']=='I1')['nomination_rate']=='1.0';checks+=1;assert any(x['entity_id']=='X1' for x in rows);checks+=1;assert json.loads((r/'universe_review.json').read_text())['seo_only_downgraded']==['观察机构'];checks+=1
+      ms=rcsv(r/'ai_mentions.csv');x=next(x for x in ms if x['answer_id']=='A-M1-a' and x['entity_id']=='I2');x.update(mention_intent='excluded',nomination_rank='',top3='false',first_mention='false');wcsv(r/'ai_mentions.csv',list(ms[0]),ms);met.compute(r);assert float(next(z for z in rcsv(r/'ai_metrics.csv') if z['entity_id']=='I2')['nomination_rate'])<1;checks+=1
+      ans=[json.loads(x) for x in (r/'ai_answers.jsonl').read_text().splitlines()];ans[0]['response_text']+=' 未知机构不推荐。';wjsonl(r/'ai_answers.jsonl',ans);xs=rcsv(r/'ai_emergent_entities.csv');xs.append({'entity_id':'X2','canonical_name':'未知机构','aliases':'','measurement_target':'institution','market_scope':'unknown','operating_region':'','resolution_status':'unresolved','source_answer_ids':ans[0]['answer_id'],'source_result_ids':'','notes':''});wcsv(r/'ai_emergent_entities.csv',list(xs[0]),xs);ms=rcsv(r/'ai_mentions.csv');ms.append({'mention_id':'RAWX2','answer_id':ans[0]['answer_id'],'entity_id':'X2','mention_rank':'3','nomination_rank':'','mentioned_name':'未知机构','match_method':'explicit-name','resolution_status':'unresolved','mention_intent':'excluded','top3':'false','first_mention':'false','entity_correct':'false','citation_linked':'false','citation_refs':'','concepts':'','notes':''});wcsv(r/'ai_mentions.csv',list(ms[0]),ms);met.compute(r);assert not any(z['entity_id']=='X2' for z in rcsv(r/'ai_metrics.csv'));checks+=1;assert not any(z.code in {'mention-unresolved-emergent','mention-entity'} for z in val.validate(r,stage='measurement'));checks+=1
+      sr=rcsv(r/'serp_results.csv');sr.append({'result_id':'S3','query_id':'M1','engine':'web','rank':'3','url':'https://example.org/x','title':'新星老师','snippet':'新星老师','sampled_at':'2026-09-10'});wcsv(r/'serp_results.csv',list(sr[0]),sr);sm=rcsv(r/'serp_mentions.csv');sm.append({'serp_mention_id':'SMX','result_id':'S3','entity_id':'X1','matched_text':'新星老师','match_surface':'both','notes':''});wcsv(r/'serp_mentions.csv',list(sm[0]),sm);assert not any(z.code=='serp-mention-entity' for z in val.validate(r,stage='measurement'));checks+=1
+      m=json.loads((r/'run_metadata.json').read_text());m.update(measurement_profile='release',repeat_runs_expected=1,fresh_context_required=True);(r/'run_metadata.json').write_text(json.dumps(m,ensure_ascii=False));assert any(z.code=='release-repeat-minimum' for z in val.validate(r,stage='measurement'));checks+=1;m.update(measurement_profile='snapshot');(r/'run_metadata.json').write_text(json.dumps(m,ensure_ascii=False))
+      aa=[json.loads(x) for x in (r/'ai_answers.jsonl').read_text().splitlines()];aa[0]['answer_context_mode']='external-search-augmented';wjsonl(r/'ai_answers.jsonl',aa);assert any(z.code=='answer-context-mode-mismatch' for z in val.validate(r,stage='measurement'));checks+=1;aa[0]['answer_context_mode']='native';aa[0]['citations']=['https://jia.example'];wjsonl(r/'ai_answers.jsonl',aa)
+      ms=rcsv(r/'ai_mentions.csv');m0=next(z for z in ms if z['answer_id']==aa[0]['answer_id'] and z['entity_id']=='I1');m0.update(citation_linked='true',citation_refs='');wcsv(r/'ai_mentions.csv',list(ms[0]),ms);assert any(z.code=='citation-ref-missing' for z in val.validate(r,stage='measurement'));checks+=1;m0['citation_refs']='https://jia.example';wcsv(r/'ai_mentions.csv',list(ms[0]),ms);assert not any(z.code.startswith('citation-ref') for z in val.validate(r,stage='measurement'));checks+=1
+      sr=rcsv(r/'serp_results.csv');sr.append(dict(sr[0],result_id='SDUP',url='https://example.org/dup'));wcsv(r/'serp_results.csv',list(sr[0]),sr);assert any(z.code=='serp-rank-duplicate' for z in val.validate(r,stage='measurement'));checks+=1;sr.pop();wcsv(r/'serp_results.csv',list(sr[0]),sr)
+      ms=rcsv(r/'ai_mentions.csv');p=next(z for z in ms if z['entity_id']=='I1');p['top3']='false';wcsv(r/'ai_mentions.csv',list(ms[0]),ms);assert any(z.code=='top3-rank-mismatch' for z in val.validate(r,stage='measurement'));checks+=1;p['top3']='true';wcsv(r/'ai_mentions.csv',list(ms[0]),ms)
+      model=json.loads((r/'report_model.json').read_text());assert len(model['market_universe']['national_benchmarks'])==1;checks+=1
+      try:
+        charts=load('charts_v22','generate_charts.py');docx=load('docx_v22','generate_report_docx.py');charts.generate(r);docx.render(r,r/'deliverables'/'report.docx');assert not [x for x in val.validate(r,True,'report') if x.level in {'error','warning'}];checks+=1
+      except Exception as e:skips.append(f'DOCX/图表集成测试 SKIP: {e}')
+    print(f'PASS: GEO v2.2 {checks} 项核心回归通过')
+    for s in skips:print(s)
     return 0
-if __name__=="__main__":raise SystemExit(main())
+if __name__=='__main__':raise SystemExit(main())
