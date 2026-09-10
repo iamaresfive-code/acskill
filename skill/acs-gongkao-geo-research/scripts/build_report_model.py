@@ -2,7 +2,6 @@
 """Build the single v2.2 report model used only by the DOCX renderer."""
 from __future__ import annotations
 import argparse,csv,json
-from collections import Counter
 from pathlib import Path
 
 
@@ -41,7 +40,6 @@ def build(run:Path):
     grouped={k:merge_rows(v) for k,v in groups.items()}
     engines=sorted({x.get("engine","") for x in rjsonl(run/"ai_answers.jsonl") if x.get("engine")})
     disagreements=[x for x in rechecks if x.get("disagreement","").lower() in {"1","true","yes","y","是"}];resolved=[x for x in disagreements if x.get("resolution","").strip()]
-    counts=Counter(x.get("market_role") or "unclassified" for x in included)
     title_region=meta.get("normalized_region") or meta.get("requested_region") or "地区"
     title=(f"{title_region}公考 GEO 竞争格局深度报告" if meta.get("research_mode")!="blind-discovery-scan" else f"{title_region}公考 GEO 公开网络发现扫描")
     summaries=list(analysis.get("executive_summary") or [])
@@ -51,12 +49,12 @@ def build(run:Path):
         else:summaries.append("本次未形成可用 AI Answer Measurement，因此报告只能解释 GEO Asset Readiness，不应被称为真实 AI GEO 排名。")
     model={
       "schema_version":"2.2","skill_version":"2.2","title":title,"subtitle":"Market Universe × AI Answer Measurement × GEO Asset Readiness","meta":meta,
-      "kpis":{"included_entities":len(included),"national_benchmarks":len(grouped["national_benchmarks"]),"local_institutions":len(grouped["local_institutions"]),"expert_ip":len(grouped["expert_ip"]),"observation_entities":len(observation),"ai_engines":len(engines),"evidence_count":len(evidence),"definitions":{"included_entities":"经 Market Universe Confirmation 纳入正式研究的全部主体","observation_entities":"未进入正式比较、但需具名披露的 observation/unresolved 主体"}},
+      "kpis":{"included_entities":len(included),"national_benchmarks":len(grouped["national_benchmarks"]),"local_institutions":len(grouped["local_institutions"]),"expert_ip":len(grouped["expert_ip"]),"observation_entities":len(observation),"ai_engines":len(engines),"evidence_count":len(evidence),"definitions":{"included_entities":"经 Market Universe Confirmation 纳入正式研究的全部主体","national_benchmarks":"included 且 market_role=national-benchmark","local_institutions":"included 且 market_scope 为 local/regional 的机构型主体","expert_ip":"included 且 market_role=expert-ip 或 entity_type 为 teacher/ip/expert","observation_entities":"未进入正式比较、但需具名披露的 observation/unresolved 主体"}},
       "executive_summary":summaries,"market_universe":grouped,"observation_group":observation,
       "ai_visibility":{"national_benchmarks":grouped["national_benchmarks"],"local_institutions":grouped["local_institutions"],"expert_ip":grouped["expert_ip"],"other":grouped["other_included"]},
       "asset_readiness":sorted(assets,key=lambda r:fnum(r.get("asset_readiness")),reverse=True),"concept_map":concepts,"diagnoses":analysis.get("diagnoses",[]),"strategy":analysis.get("strategy",[]),"plan_90_days":analysis.get("plan_90_days",[]),
       "charts":{"universe":"charts/market-universe.png","national_visibility":"charts/ai-visibility-national.png","local_visibility":"charts/ai-visibility-local.png","ip_visibility":"charts/ai-visibility-ip.png","asset_readiness":"charts/asset-readiness.png","concept_ownership":"charts/concept-ownership.png"},
-      "appendix":{"market_role_counts":dict(counts),"recheck":{"rows":len(rechecks),"disagreements":len(disagreements),"resolved_disagreements":len(resolved)},"research_assets":[x.name for x in run.iterdir() if x.is_file()],"methodology_notes":["User Seed 只保证研究，不影响任何 AI/资产指标。","Market Scope 不能由 Recall 反推。","AI Answer Measurement 与 Open-Web SERP/页面提及物理分离。","公开网页用于解释 GEO 资产，不替代真实 AI 提名。"]}
+      "appendix":{"recheck":{"rows":len(rechecks),"disagreements":len(disagreements),"resolved_disagreements":len(resolved)},"research_assets":[x.name for x in run.iterdir() if x.is_file()],"methodology_notes":["User Seed 只保证研究，不影响任何 AI/资产指标。","Market Scope 不能由 Recall 反推。","AI Answer Measurement 与 Open-Web SERP/页面提及物理分离。","公开网页用于解释 GEO 资产，不替代真实 AI 提名。"]}
     }
     (run/"report_model.json").write_text(json.dumps(model,ensure_ascii=False,indent=2)+"\n",encoding="utf-8");return model
 
