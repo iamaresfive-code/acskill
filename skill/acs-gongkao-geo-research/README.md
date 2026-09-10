@@ -2,229 +2,217 @@
 
 > 公考行业 GEO 竞争研究 Skill：先确认“研究谁”，再测“AI 到底提不提”，最后用公开资产解释原因。
 
-如果你第一次接触 GEO，可以先把它理解成：
+v2.2 不把“网页多”直接等同于“AI GEO 强”。正式研究拆成三层：
 
-**研究一家公考机构、品牌或老师/IP，在用户没有输入其名字时，是否会被 AI 自然提名；如果会，为什么会；如果不会，缺的是什么。**
+1. **Market Universe**：地区里真正值得研究的机构、品牌、Expert/IP；
+2. **AI Answer Measurement**：固定无品牌问题下，AI 实际提名谁；
+3. **GEO Asset Readiness**：官网、平台、第三方证据、地域语义等公开资产，用于解释为什么可能被 AI 识别/引用。
 
-v2.2 不再把“搜索引擎能找到很多页面”直接等同于“AI GEO 强”。
+## Preflight
 
-## 为什么 v2.2 要重构
+第一次只确认：
 
-v2.1/v2.1.1 的工程稳定性提高了，但真实地区回归暴露了一个更根本的问题：如果先盲搜一个省份，再让公开网页搜索决定 Candidate Universe，SEO 榜单型全国品牌会被系统性放大，而本土强招生、强私域、强短视频/视频号、强老师 IP 的主体可能被低估或漏掉。
+1. 调查地区；
+2. User Seed：希望一定覆盖的机构/品牌/老师 IP；
+3. 是否允许系统补充竞争主体。
 
-因此 v2.2 改成三层：
+Seed 只保证研究和解析，不加分、不自动 included、不自动成为本土核心。
 
-1. **Market Universe**：这个地区真正值得研究的主体是谁；
-2. **AI Answer Measurement**：固定无品牌问题下，AI 实际提到了谁；
-3. **GEO Asset Readiness**：公开网页、平台、第三方证据、地域语义等资产，解释 AI 为什么可能认识它。
+正式输出固定为 Word：`deliverables/report.docx`。
 
-## 第一次使用只确认三件事
+## Market Universe Gate
 
-### 1. 调查哪里？
+System Discovery 后必须先形成并让用户确认：
 
-例如：广东省、天津市、广州市、珠三角。
+- A 全国 Benchmark；
+- B 本地/区域机构；
+- C Expert/IP；
+- D Observation/Historical/Unresolved。
 
-### 2. 你希望一定覆盖哪些机构 / 品牌 / 老师 IP？
-
-这叫 **Seed List（种子主体）**。不要求完整，可以只列最关心的一批。
-
-Seed 的意义只有一个：**保证研究和实体解析，不保证自动 included，更不保证高分。**
-
-Seed 初始应为 `unresolved / needs-review`；完成 Rescue 后，才决定 included / observation / unresolved。它不会自动增加提名率、Top3率、资产分或证据等级。
-
-如果用户明确说“我没有名单，你自己发现”，系统切换为 `blind-discovery-scan`。这种模式只能叫“公开网络发现扫描”，不能直接包装成地区真实竞争全景。
-
-### 3. 是否允许系统补充竞争主体？
-
-默认建议允许。最终 Universe = 用户 Seed + 系统补充。
-
-**输出格式不再询问：v2.2 唯一正式交付是 Word（`report.docx`）。**
-
-## 最重要的新步骤：Market Universe Confirmation
-
-系统完成补充 Discovery 后，不允许马上跑 Measurement。
-
-必须先给用户看一版拟研究清单，至少分成：
-
-- 全国基准品牌；
-- 本地 / 区域机构；
-- Expert / IP；
-- Observation / Historical / Unresolved。
-
-`universe_review.json` 必须由 Skill 脚本生成/刷新，不应由执行者另写一套分桶格式：
-
-```bash
-python3 scripts/refresh_universe_review.py <run-dir>
-python3 scripts/validate_run.py <run-dir> --stage universe --strict
-```
-
-Stage 1 校验只检查 Preflight、Market Universe 与 Review Contract，不会因为 AI/Report 文件尚未生成而制造几十个预期错误。
-
-用户确认后，才执行：
-
-```bash
-python3 scripts/confirm_market_universe.py <run-dir> --approved-by user
-```
-
-该脚本写入：
+确认前：
 
 ```text
-market_universe_confirmed = true
-measurement_allowed = true
+market_universe_confirmed = false
+measurement_allowed = false
 ```
 
-它只确认当前研究合同，不发现主体、不打分、不改变任何 AI Measurement 结果。
+确认后才能进入 Measurement。`market_scope` 只能来自实体/地域事实，不能由 Recall 低反推“本地”。全国 Benchmark 默认保持少量代表性样本；SEO 榜单出现不等于当地核心竞争者。
 
-## Seed 与 Discovery 同名时怎么处理
+## Stage 2.1 Measurement Contract
 
-v2.2 采用字段级合并：
+广东真实回归证明：单引擎 + WorkBuddy 外部 Web Search 增强得到的结果，不能包装成“模型原生 Recall”。因此当前 v2.2 Draft 对 Measurement 增加了明确协议。
 
-- 始终保留 `user_seed=true`；
-- Discovery 的 aliases / market_scope / market_role / salience_basis / notes 等非空信息，可以回填 Seed 的空字段；
-- 不再因为 Seed 先进入表而静默丢掉后续 Discovery 证据。
+### 1. 先探测真实 AI Engine
 
-## National Benchmark 不是“所有全国连锁”
-
-正式 Word 报告仍分全国与本地，但 `national-benchmark` 只是一组**代表性可比基准**，不是“只要在本地有地址就进入”。
-
-默认建议约 4–6 个全国公考品牌。超过 8 个需要解释每一家为什么都具有当前、明确的“地区 × 公考”业务相关性。
-
-仅有本地职业培训分校、办公地址或泛职业教育业务，不足以证明当前本地公考业务足够强；这类全国品牌可以留在 Observation，等待真实 AI Answer 是否主动提名。
-
-## Platform-native IP 不能因一条本地内容自动进主榜
-
-非 User Seed 的 IP，需要持续的 `Region × Public Exam` 主题绑定，或明确教学/咨询服务、跨平台稳定身份、机构师资身份、独立 Authority 等信号。
-
-单条视频、单期播客、一次“广东上岸经历”默认只进 Observation，不能因为含地区关键词就直接进入 Expert/IP 主榜。
-
-## AI Answer Measurement 才是核心 GEO
-
-固定无品牌问题，在可用的 AI / AI Search 引擎上保存原始回答，然后计算：
-
-- Nomination Rate：提名率；
-- Top3 Rate：进入前三的比例；
-- First Mention Rate：首提率；
-- Citation Rate：被提及时有实体关联引用的比例；
-- Engine Coverage Rate：多少个已采样引擎至少提名过一次；
-- Cross-model Consistency：在至少一个引擎提名的 Query 上，不同引擎共同提名的一致程度。
-
-Top3 / First Mention 以 `mention_rank` 为准，Validator 会检查标记与顺序是否一致。
-
-如果真实 AI 回答出现 Stage 1 Market Universe 之外的新机构/IP，必须写入 `ai_emergent_entities.csv` 并解析；不能因为“初始名单没有它”就静默忽略。resolved 后可以形成 AI Metrics，但在最终报告中单列，不回写污染预先确认的主榜。
-
-如果环境只能测一个模型，要明确写 `single-engine`；如果完全无法做 AI Answer Measurement，只能输出 Asset Audit，不能叫真实 AI GEO 排名。
-
-完成原始 Measurement 后，可以先执行：
+执行者必须先实际确认哪些 AI / AI Search 能返回回答，再运行：
 
 ```bash
-python3 scripts/validate_run.py <run-dir> --stage measurement --strict
+python3 scripts/configure_measurement.py <run-dir> \
+  --engine actual-engine \
+  --context-mode native \
+  --profile snapshot \
+  --repeat-runs 1 \
+  --allow-shared-context
 ```
 
-## 公开网页测量的角色变了
+禁止模拟第二模型。0/1/2/3+ 个真实引擎分别标为 `asset-audit-only / single-engine / limited-multi-engine / multi-engine`。
 
-公开 Web 仍然重要，但它是**解释层**。
+### 2. Answer Context 必须分开
 
-v2.2 把真实搜索结果拆成：
+每个 Run 只能使用一种：
 
-- `serp_results.csv`：每个 Query 的真实 Result Item；
-- `serp_mentions.csv`：只允许标题 / 摘要中显式出现的主体；
-- `page_mentions.csv`：打开网页正文后发现的品牌提及。
+- `native`：模型原生、不额外搜索；
+- `engine-native-search`：产品自身联网/搜索回答；
+- `external-search-augmented`：执行者先 Web Search/RAG，再把检索上下文给模型。
 
-**Page Mention 永远不能冒充 Query / AI Measurement Hit。**
+第三种只能叫“外部检索增强下的 AI Answer Visibility”，不能叫模型原生 Recall。
 
-因此，一篇“十大机构”文章正文写了 12 家，只能产生 Page Mention，不能让 12 家都获得一次搜索召回。
+### 3. Snapshot 与 Release 分开
+
+- `snapshot`：允许每个 query×engine 采 1 次，用于快速压力测试；
+- `release`：正式发布口径，每个 query×engine 至少 **3 次独立采样**，`sample_run=1..N`，并要求 fresh context + 唯一 `context_id`。
+
+正式发布示例：
+
+```bash
+python3 scripts/configure_measurement.py <run-dir> \
+  --engine actual-engine \
+  --context-mode native \
+  --profile release \
+  --repeat-runs 3 \
+  --fresh-context
+```
+
+## Raw Mention 不等于 Nomination
+
+`ai_mentions.csv` 同时保存原始提及和正式正向提名。关键字段：
+
+```text
+mention_rank
+nomination_rank
+resolution_status
+mention_intent
+citation_refs
+```
+
+`mention_intent`：
+
+- recommended
+- listed
+- comparison
+- caveat
+- excluded
+
+只有：
+
+```text
+explicit-name / verified-alias
++ resolved
++ entity_correct=true
++ recommended / listed
+```
+
+才进入 Nomination Rate。
+
+例如“花生十三不是广东专属，本条不展开”仍要保留 raw mention，但应标 `excluded` 或 `caveat`，不能提高正向 Nomination。
+
+Top3 / First Mention 从 `nomination_rank` 派生，不从网页排名或原始 mention 顺序硬推。
+
+## Emergent Competitor 不得删除
+
+真实 AI Answer 或 SERP title/snippet 出现 Stage 1 Universe 外主体时，统一登记到 `ai_emergent_entities.csv`。它现在承担 Stage 2 emergent registry：
+
+- AI 来源记录 `source_answer_ids`；
+- SERP 来源记录 `source_result_ids`；
+- unresolved 主体仍保留 raw mention、rank、来源；
+- 只有 resolved 主体进入正式 Metrics；
+- emergent 永远单列，不偷偷改写 Stage 1 已确认主榜。
+
+## Citation 必须是实体级
+
+不能因为一个回答“整体有 citations”就把所有品牌 `citation_linked=true`。
+
+若 `citation_linked=true`：
+
+- `citation_refs` 至少有一个真实 URL；
+- URL 必须存在于该 Answer Cell 原始 citations；
+- 采样员确认它指向该主体、官方域或明确绑定该实体的页面。
+
+## 核心指标
+
+正式透明输出：
+
+- Raw Mention Rate
+- Nomination Rate
+- Top3 Rate
+- First Mention Rate
+- Citation Rate
+- Engine Coverage Rate
+- Cross-model Consistency
+
+单引擎时 Cross-model Consistency 必须 N.A.。不再造黑箱“AI GEO 总分”。
+
+报告应优先同时显示命中次数和分母，例如 `5/60 (8.3%)`，避免把小样本差异包装成稳定排名。
+
+## Open-Web 与 AI Measurement 物理分离
+
+- `serp_results.csv`：真实 Result Item；
+- `serp_mentions.csv`：只允许 title/snippet 可见提及；
+- `page_mentions.csv`：打开正文后发现的提及。
+
+一篇“十大机构”正文写 10 家，只产生 Page Mention，不产生 10 个 SERP/AI Hit。若本次不抓网页正文，可保留空的 `page_mentions.csv`，但必须披露 page layer 未采样。
 
 ## 20% Blind Recheck
 
-AI Answer Measurement 至少随机抽 20% answer cells，由第二采样者独立复判，不先看第一次结果。
+Answer Cells >=10 时，至少随机复判 20%。第二 reviewer 不看首轮判断，复核 raw mention、alias、entity、mention_intent、nomination_rank、Top3、First Mention、实体级 citation。分歧必须记录 resolution。
 
-分歧必须写入 `rechecks.csv` 并给出 resolution。这样多人并行采样时，口径漂移能够被发现。
+## Validator
+
+```bash
+python3 scripts/validate_run.py <run-dir> --stage universe --strict
+python3 scripts/validate_run.py <run-dir> --stage measurement --strict
+python3 scripts/validate_run.py <run-dir> --stage report --strict
+```
+
+Measurement Validator 还会检查：引擎可达性确认、sampling_mode、context mode、repeat coverage、fresh context、raw/nomination rank、emergent registry、citation refs、SERP 物理分离与 recheck coverage。
 
 ## GEO Asset Readiness
 
-v2.2 不再把公开网页代理分数称为“最终 GEO 总分”。它只解释基础设施成熟度，100 分由以下维度组成：
+解释层 /100：Entity Clarity /25、Regional Semantic Density /20、Open-Web Assets /15、External Authority /15、Content Depth & Freshness /10、Data/Tool Assets /10、Platform Coverage /5。它不等于 AI Answer Visibility。
 
-- Entity Clarity /25
-- Regional Semantic Density /20
-- Open-Web Assets /15
-- External Authority /15
-- Content Depth & Freshness /10
-- Data / Tool Assets /10
-- Platform Coverage /5
-
-同时单列 `Owned Source Dependency`，只作解释指标，不因某个地区或品牌临时改分。
-
-## Word-only 报告
-
-v2.2 删除正式 HTML / PDF Renderer，只维护一个 A4 DOCX 报告产品：
-
-```text
-Research Data
-→ report_model.json
-→ generate_report_docx.py
-→ Visual QA
-→ deliverables/report.docx
-```
-
-这样可以稳定控制：页面、字体、表格宽度、分页、诊断卡、图表最大宽度和 Appendix。
-
-## 核心运行顺序
+## 运行顺序
 
 ```bash
 python3 scripts/preflight.py ...
 python3 scripts/build_market_universe.py <run-dir>
-# Agent 完成/补齐 Entity Resolution + Market Salience Review 后：
 python3 scripts/refresh_universe_review.py <run-dir>
 python3 scripts/validate_run.py <run-dir> --stage universe --strict
-# 用户确认后：
 python3 scripts/confirm_market_universe.py <run-dir> --approved-by user
-# 只有确认后才允许正式 AI Measurement
+# 实际探测 AI Engine
+python3 scripts/configure_measurement.py <run-dir> ...
+# Agent 执行固定题池并写入 raw answers / mentions / emergent / SERP / rechecks
 python3 scripts/compute_ai_metrics.py <run-dir>
-python3 scripts/score_assets.py <run-dir>
 python3 scripts/validate_run.py <run-dir> --stage measurement --strict
+python3 scripts/score_assets.py <run-dir>
 python3 scripts/generate_charts.py <run-dir>
 python3 scripts/build_report_model.py <run-dir>
 python3 scripts/generate_report_docx.py <run-dir>
 python3 scripts/validate_run.py <run-dir> --stage report --strict
 ```
 
-## 依赖
+## 依赖与测试
 
-核心研究、数据校验、AI Metrics：Python 标准库即可。
-
-Word：
+核心研究/校验仅需 Python 标准库。Word 需要 `python-docx`，图表需要 `matplotlib`。
 
 ```bash
-pip install python-docx
+python3 -m py_compile scripts/*.py
+python3 scripts/test_v22.py
 ```
 
-图表：
+第三方依赖缺失时 DOCX/图表集成测试可以 SKIP，但必须明确输出；核心研究协议测试不能因此整体崩溃。
 
-```bash
-pip install matplotlib
-```
+## 发布纪律
 
-图表脚本会优先使用系统中可用的中文字体；macOS 建议存在 PingFang SC，Windows 可使用 Microsoft YaHei，Linux 建议安装 Noto Sans CJK。
+Synthetic Test 全绿不能直接发布。正式 v2.2 仍需完成广东、天津、山东真实地区回归。Golden Reality Fixture 只能在盲跑后做后验漏召回检查，生产逻辑不得读取、注入 Candidate 或加分。
 
-## 测试
-
-```bash
-python -m py_compile scripts/*.py
-python scripts/test_v22.py
-```
-
-缺少 Word / 图表第三方依赖时，相应集成测试可 `SKIP`，但核心研究协议测试仍必须运行；发布说明必须列出被跳过项。
-
-## 发布前真实回归
-
-v2.2 不允许只看 Synthetic Test 全绿就发布。至少做：
-
-1. Synthetic Test；
-2. 广东 / 天津 / 山东真实地区回归；
-3. 盲跑结束后再做 Golden Reality Check。
-
-Golden Fixture **只能用于发布后验检查，生产逻辑不得读取、不得注入 Candidate、不得加分。**
-
-广东回归另外固定维护 `tests/fixtures/guangdong-v22-measurement-queries.json`：20 条机构问题 + 8 条 Expert/IP 问题，全部无品牌词。同一版本比较时不得因已知结果临时改题。
-
-历史文档状态请先看 `references/README.md`；v2.2 执行不得引用其中标记为 legacy/deprecated 的旧协议作为当前规范。
+GEO 不代表教学质量、通过率、招生量、市场份额或一般口碑。
