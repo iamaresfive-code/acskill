@@ -95,8 +95,13 @@ def render(run:Path,out:Path):
     page_break();h("Appendix / Research Audit",1);app=model.get("appendix",{});r=app.get("recheck",{});table(["复判记录","分歧","已解决分歧","Evidence"],[[r.get("rows",0),r.get("disagreements",0),r.get("resolved_disagreements",0),k.get("evidence_count",0)]],widths=[40,40,40,40],font=9)
     h("研究方法边界",2)
     for x in app.get("methodology_notes",[]):bullet(x)
+    emergent=model.get("ai_visible_observation",[])
+    if emergent:
+        h("Observation 中被 AI 实际提名的主体",2)
+        table(["主体","提名率","Top3率","市场范围","Stage 1 状态"],[[x.get("canonical_name"),pct(x.get("nomination_rate")),pct(x.get("top3_rate")),x.get("market_scope"),x.get("universe_status")] for x in emergent],widths=[52,28,28,28,30],font=8.5)
+        d.add_paragraph("这些主体未进入 Stage 1 主榜，但真实 AI Answer 已出现提名，应在最终解释中单独复核是否需要升级为正式竞争主体。")
     h("观察组 / 未进入正式比较的主体",2);obs=model.get("observation_group",[])
-    if obs:table(["主体","状态","市场范围","原因/备注"],[[x.get("canonical_name"),x.get("universe_status"),x.get("market_scope"),x.get("notes") or x.get("salience_basis")] for x in obs],widths=[42,28,28,66],font=8)
+    if obs:table(["主体","状态","市场范围","AI提名率","原因/备注"],[[x.get("canonical_name"),x.get("universe_status"),x.get("market_scope"),pct(x.get("nomination_rate")),x.get("notes") or x.get("salience_basis")] for x in obs],widths=[38,24,24,24,58],font=8)
     h("研究资产清单",2)
     for x in app.get("research_assets",[]):bullet(x)
     ensure_directory(out.parent);d.save(out);return out
