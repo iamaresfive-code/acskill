@@ -6,7 +6,7 @@ HERE=Path(__file__).resolve().parent
 
 def load(name,file):
     spec=importlib.util.spec_from_file_location(name,HERE/file);m=importlib.util.module_from_spec(spec);sys.modules[name]=m;spec.loader.exec_module(m);return m
-pre=load("pre_v22","preflight.py");metrics=load("metrics_v22","compute_ai_metrics.py");assets=load("assets_v22","score_assets.py");validator=load("validator_v22","validate_run.py");modeler=load("model_v22","build_report_model.py")
+pre=load("pre_v22","preflight.py");metrics=load("metrics_v22","compute_ai_metrics.py");assets=load("assets_v22","score_assets.py");validator=load("validator_v22","validate_run.py");modeler=load("model_v22","build_report_model.py");universe_builder=load("universe_v22","build_market_universe.py")
 
 def wcsv(p,fields,rows):
     with p.open("w",encoding="utf-8-sig",newline="") as f:w=csv.DictWriter(f,fieldnames=fields);w.writeheader();w.writerows(rows)
@@ -23,6 +23,7 @@ def build(run:Path):
       {"entity_id":"P1","canonical_name":"乙老师","aliases":"乙老师公考","entity_type":"ip","user_seed":"true","discovery_origin":"user-seed","market_scope":"local","operating_region":"示例省","market_role":"expert-ip","activity_status":"active","platform_native":"true","salience_basis":"平台账号+本地主题持续内容","universe_status":"included","confirmation_status":"confirmed","notes":""},
       {"entity_id":"O1","canonical_name":"待核机构","aliases":"","entity_type":"institution","user_seed":"false","discovery_origin":"system-discovery","market_scope":"unknown","operating_region":"","market_role":"observation","activity_status":"uncertain","platform_native":"false","salience_basis":"单一聚合页","universe_status":"observation","confirmation_status":"confirmed","notes":"证据不足"}
     ])
+    universe_builder.write_review(run,rcsv(run/"market_universe.csv"),meta)
     qf=["query_id","query_text","query_group","measurement_target","region","status"];qs=[
       {"query_id":"M1","query_text":"示例省公考机构推荐","query_group":"综合","measurement_target":"institution","region":"示例省","status":"sampled"},{"query_id":"M2","query_text":"示例省面试机构推荐","query_group":"面试","measurement_target":"institution","region":"示例省","status":"sampled"},{"query_id":"M3","query_text":"示例省本土公考机构","query_group":"本土","measurement_target":"institution","region":"示例省","status":"sampled"},
       {"query_id":"P1Q","query_text":"示例省申论老师推荐","query_group":"申论","measurement_target":"ip","region":"示例省","status":"sampled"},{"query_id":"P2Q","query_text":"示例省面试老师推荐","query_group":"面试","measurement_target":"ip","region":"示例省","status":"sampled"},{"query_id":"P3Q","query_text":"示例省公考规划老师","query_group":"规划","measurement_target":"ip","region":"示例省","status":"sampled"}
@@ -47,17 +48,27 @@ def build(run:Path):
     rf=["recheck_id","sample_type","source_id","first_decision","second_decision","disagreement","resolution","recheck_by","notes"];wcsv(run/"rechecks.csv",rf,[{"recheck_id":"R1","sample_type":"ai-answer","source_id":ans[0]["answer_id"],"first_decision":"I1,I2","second_decision":"I1,I2","disagreement":"false","resolution":"","recheck_by":"reviewer-2","notes":"blind"},{"recheck_id":"R2","sample_type":"ai-answer","source_id":ans[4]["answer_id"],"first_decision":"I1,I2","second_decision":"I1","disagreement":"true","resolution":"按显式品牌名规则保留 I2","recheck_by":"reviewer-2","notes":"blind"},{"recheck_id":"R3","sample_type":"ai-answer","source_id":ans[8]["answer_id"],"first_decision":"P1","second_decision":"P1","disagreement":"false","resolution":"","recheck_by":"reviewer-2","notes":"blind"}])
     metrics.compute(run);assets.score(run);modeler.build(run)
 
+def test_seed_discovery_merge():
+    with tempfile.TemporaryDirectory() as td:
+        run=Path(td);meta=pre.make_metadata("示例省",["甲公考"],True);(run/"run_metadata.json").write_text(json.dumps(meta,ensure_ascii=False),encoding="utf-8")
+        fields=["entity_id","canonical_name","aliases","entity_type","market_scope","operating_region","market_role","activity_status","platform_native","salience_basis","universe_status","discovery_origin","notes"]
+        wcsv(run/"discovery_candidates.csv",fields,[{"entity_id":"D1","canonical_name":"甲公考","aliases":"甲教育","entity_type":"institution","market_scope":"local","operating_region":"示例省","market_role":"local-active","activity_status":"active","platform_native":"false","salience_basis":"官网+本地课程","universe_status":"included","discovery_origin":"system-discovery","notes":"发现证据"}])
+        universe_builder.build(run);r=rcsv(run/"market_universe.csv")[0]
+        assert r["user_seed"]=="true" and r["market_scope"]=="local" and "官网+本地课程" in r["salience_basis"] and "system-discovery" in r["discovery_origin"]
+        review=json.loads((run/"universe_review.json").read_text(encoding="utf-8"));assert review["bucket_audit"]["complete"] is True
+
 def main():
-    checks=0;skips=[];pre.self_test();checks+=1
+    checks=0;skips=[];pre.self_test();checks+=1;test_seed_discovery_merge();checks+=1
     with tempfile.TemporaryDirectory() as td:
         run=Path(td);build(run);rows=rcsv(run/"ai_metrics.csv");assert any(r["entity_id"]=="I1" and float(r["nomination_rate"])==1.0 for r in rows);checks+=1
         assert not any(r["entity_id"]=="I2" and r["result_id"]=="S1" for r in rcsv(run/"serp_mentions.csv"));checks+=1
         assert next(r for r in rcsv(run/"market_universe.csv") if r["entity_id"]=="I2")["market_scope"]=="national";checks+=1
+        assert not [x for x in validator.validate(run,True,"universe") if x.level in {"error","warning"}];checks+=1
         model=json.loads((run/"report_model.json").read_text(encoding="utf-8"));assert len(model["market_universe"]["national_benchmarks"])==1 and len(model["market_universe"]["local_institutions"])==1 and len(model["market_universe"]["expert_ip"])==1;checks+=1
-        sr=rcsv(run/"serp_results.csv");sr.append(dict(sr[0],result_id="S3",url="https://example.org/c"));wcsv(run/"serp_results.csv",list(sr[0].keys()),sr);assert any(x.code=="serp-rank-duplicate" for x in validator.validate(run));checks+=1;sr=sr[:-1];wcsv(run/"serp_results.csv",list(sr[0].keys()),sr)
-        meta=json.loads((run/"run_metadata.json").read_text(encoding="utf-8"));meta["market_universe_confirmed"]=False;(run/"run_metadata.json").write_text(json.dumps(meta,ensure_ascii=False),encoding="utf-8");assert any(x.code=="universe-not-confirmed" for x in validator.validate(run));checks+=1;meta["market_universe_confirmed"]=True;(run/"run_metadata.json").write_text(json.dumps(meta,ensure_ascii=False),encoding="utf-8")
+        sr=rcsv(run/"serp_results.csv");sr.append(dict(sr[0],result_id="S3",url="https://example.org/c"));wcsv(run/"serp_results.csv",list(sr[0].keys()),sr);assert any(x.code=="serp-rank-duplicate" for x in validator.validate(run,stage="measurement"));checks+=1;sr=sr[:-1];wcsv(run/"serp_results.csv",list(sr[0].keys()),sr)
+        meta=json.loads((run/"run_metadata.json").read_text(encoding="utf-8"));meta["market_universe_confirmed"]=False;(run/"run_metadata.json").write_text(json.dumps(meta,ensure_ascii=False),encoding="utf-8");assert any(x.code=="universe-not-confirmed" for x in validator.validate(run,stage="measurement"));checks+=1;meta["market_universe_confirmed"]=True;(run/"run_metadata.json").write_text(json.dumps(meta,ensure_ascii=False),encoding="utf-8")
         try:
-            charts=load("charts_v22","generate_charts.py");docxr=load("docx_v22","generate_report_docx.py");charts.generate(run);docxr.render(run,run/"deliverables"/"report.docx");issues=validator.validate(run,True);assert not [x for x in issues if x.level in {"error","warning"}],[(x.level,x.code,x.message) for x in issues];checks+=1
+            charts=load("charts_v22","generate_charts.py");docxr=load("docx_v22","generate_report_docx.py");charts.generate(run);docxr.render(run,run/"deliverables"/"report.docx");issues=validator.validate(run,True,"report");assert not [x for x in issues if x.level in {"error","warning"}],[(x.level,x.code,x.message) for x in issues];checks+=1
         except Exception as e:skips.append(f"DOCX/图表集成测试 SKIP: {e}")
     print(f"PASS: GEO v2.2 {checks} 项核心回归通过")
     for x in skips:print(x)
