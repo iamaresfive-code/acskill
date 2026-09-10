@@ -60,6 +60,14 @@ measurement_allowed = true
 
 没有这一步，`validate_run.py --strict` 必须失败。
 
+当 `market_universe.csv` 已完成分类和证据复核、用户明确批准后，可执行：
+
+```bash
+python3 scripts/confirm_market_universe.py <run-dir> --approved-by user
+```
+
+该脚本只确认当前研究合同，不发现主体、不打分、不改变任何 AI Measurement 结果。
+
 ## 全国品牌和本土品牌不再混成一个“总榜”
 
 正式 Word 报告至少分开：
@@ -136,7 +144,10 @@ Research Data
 
 ```bash
 python3 scripts/preflight.py ...
-# Agent 完成 Seed + System Discovery，建立并让用户确认 market_universe.csv
+python3 scripts/build_market_universe.py <run-dir>
+# Agent 补齐 market_scope / market_role / salience_basis，并把 Universe 草案给用户确认
+python3 scripts/confirm_market_universe.py <run-dir> --approved-by user
+# 只有确认后才允许正式 AI Measurement
 python3 scripts/compute_ai_metrics.py <run-dir>
 python3 scripts/score_assets.py <run-dir>
 python3 scripts/generate_charts.py <run-dir>
@@ -177,7 +188,9 @@ python scripts/test_v22.py
 v2.2 不允许只看 Synthetic Test 全绿就发布。至少做：
 
 1. Synthetic Test；
-2. 广东 / 天津 / 山东真实地区盲跑；
+2. 广东 / 天津 / 山东真实地区回归；
 3. 盲跑结束后再做 Golden Reality Check。
 
 Golden Fixture **只能用于发布后验检查，生产逻辑不得读取、不得注入 Candidate、不得加分。**
+
+广东回归另外固定维护 `tests/fixtures/guangdong-v22-measurement-queries.json`：20 条机构问题 + 8 条 Expert/IP 问题，全部无品牌词。同一版本比较时不得因已知结果临时改题。
