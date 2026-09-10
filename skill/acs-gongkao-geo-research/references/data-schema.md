@@ -16,7 +16,7 @@
 - research_mode: scoped-geo-landscape | blind-discovery-scan
 - market_universe_confirmed
 - measurement_allowed
-- sampling_mode: multi-engine | limited-multi-engine | single-engine | asset-audit-only
+- sampling_mode: multi-engine | limited-multi-engine | single-engine | asset-audit-only | pending
 - ai_engines_expected
 - observation_date
 
@@ -43,6 +43,54 @@ notes
 `market_scope`: national / regional / local / unknown。
 
 `market_role`: national-benchmark / local-core / local-active / expert-ip / historical / observation / unclassified。
+
+`universe_status`: included / observation / excluded / unresolved。
+
+`confirmation_status`: needs-review / confirmed。
+
+重要：User Seed 初次建池不能因为是 Seed 就自动获得 included；若尚未完成实体解析/市场核验，应为 unresolved + needs-review。
+
+当 Seed 与 System Discovery 同名时，必须字段级合并，不能只保留 `user_seed=true` 后丢弃 Discovery 携带的 aliases / scope / role / salience_basis / notes。
+
+## universe_review.json
+
+Stage 1 的机器可审计确认材料。至少包含：
+
+```text
+schema_version
+region
+research_mode
+market_universe_confirmed
+measurement_allowed
+total_entities
+user_seed_count
+user_seed_all_present
+system_discovery_count
+distribution
+buckets
+bucket_audit
+seo_only_downgraded
+unresolved_or_weak
+message
+```
+
+`buckets` 必须精确为四个互斥集合：
+
+```text
+A_national_benchmarks
+B_local_regional
+C_expert_ip
+D_observation_or_other
+```
+
+四个 bucket 不允许重叠，且并集必须等于 `market_universe.csv` 全部主体。
+
+Market Universe 被 Agent / reviewer 修改后，使用：
+
+```bash
+python3 scripts/refresh_universe_review.py <run-dir>
+python3 scripts/validate_run.py <run-dir> --stage universe --strict
+```
 
 ## queries.csv
 
@@ -202,6 +250,21 @@ notes
 - observation_group
 - appendix
 - kpis
+
+## Validator stages
+
+```bash
+# Stage 1：只校验 Universe，不要求 Measurement / Word
+python3 scripts/validate_run.py <run-dir> --stage universe --strict
+
+# Stage 2：Universe 已确认后，校验 AI/SERP/Recheck/Metrics
+python3 scripts/validate_run.py <run-dir> --stage measurement --strict
+
+# 最终：再校验 report_model + DOCX-only
+python3 scripts/validate_run.py <run-dir> --stage report --strict
+```
+
+默认不指定 `--stage` 时按 full 执行。
 
 ## deliverables/
 
