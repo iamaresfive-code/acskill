@@ -12,7 +12,7 @@ from build_market_universe import write_review
 
 MAIN_ROLES={"national-benchmark","local-core","local-active","expert-ip","historical"}
 VALID_SCOPES={"national","regional","local","unknown"}
-VALID_STATUS={"included","observation","excluded","unresolved"}
+VALID_STATUS={"included","observation","unresolved"}
 
 
 def read_csv(path:Path):
