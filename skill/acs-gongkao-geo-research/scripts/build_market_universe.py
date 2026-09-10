@@ -89,8 +89,25 @@ def build_review(rows:list[dict],meta:dict)->dict:
       "schema_version":"2.2","region":meta.get("normalized_region") or meta.get("requested_region"),"research_mode":meta.get("research_mode"),
       "market_universe_confirmed":bool(meta.get("market_universe_confirmed")),"measurement_allowed":bool(meta.get("measurement_allowed")),
       "total_entities":len(rows),"user_seed_count":len(seeds),"user_seed_all_present":len(seeds)==len([x for x in meta.get("seed_entities",[]) if str(x).strip()]),
-      "system_discovery_count":sum("system-discovery" in (r.get("discovery_origin") or "") or "platform-native" in (r.get("discovery_origin") or "") for r in rows),
-      "distribution":{"market_scope":dict(Counter(r.get("market_scope") or "" for r in rows)),"market_role":dict(Counter(r.get("market_role") or "" for r in rows)),"universe_status":dict(Counter(r.get("universe_status") or "" for r in rows))},
+      "system_discovery_count":sum(
+          ((r.get("user_seed") or "").lower() not in TRUE)
+          and ("system-discovery" in (r.get("discovery_origin") or "") or "platform-native" in (r.get("discovery_origin") or ""))
+          for r in rows
+      ),
+      "seed_also_discovered_count":sum(
+          ((r.get("user_seed") or "").lower() in TRUE)
+          and ("system-discovery" in (r.get("discovery_origin") or "") or "platform-native" in (r.get("discovery_origin") or ""))
+          for r in rows
+      ),
+      "platform_native_count":sum((r.get("platform_native") or "").lower() in TRUE for r in rows),
+      "expert_ip_included_count":sum(r.get("universe_status")=="included" and r.get("market_role")=="expert-ip" for r in rows),
+      "distribution":{
+          "market_scope":dict(Counter(r.get("market_scope") or "" for r in rows)),
+          "market_role":dict(Counter(r.get("market_role") or "" for r in rows)),
+          "universe_status":dict(Counter(r.get("universe_status") or "" for r in rows)),
+          "platform_native":dict(Counter("true" if (r.get("platform_native") or "").lower() in TRUE else "false" for r in rows)),
+          "discovery_origin":dict(Counter(x for r in rows for x in (r.get("discovery_origin") or "").split("|") if x))
+      },
       "buckets":{"A_national_benchmarks":A,"B_local_regional":B,"C_expert_ip":C,"D_observation_or_other":D},
       "bucket_audit":{"represented_rows":len(flat),"unique_names":len(counts),"duplicates":[k for k,v in counts.items() if v>1],"complete":len(flat)==len(rows) and len(counts)==len(rows)},
       "seo_only_downgraded":seo,"unresolved_or_weak":unresolved,
