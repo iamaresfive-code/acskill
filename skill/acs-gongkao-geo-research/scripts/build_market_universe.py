@@ -12,7 +12,7 @@ from collections import Counter
 from pathlib import Path
 from fs_utils import ensure_directory
 
-FIELDS=["entity_id","canonical_name","aliases","entity_type","user_seed","discovery_origin","market_scope","operating_region","market_role","activity_status","platform_native","salience_basis","universe_status","confirmation_status","notes"]
+FIELDS=["entity_id","canonical_name","aliases","entity_type","user_seed","discovery_origin","market_scope","operating_region","market_role","activity_status","platform_native","salience_basis","universe_status","confirmation_status","downgrade_reason","notes"]
 PLACEHOLDERS={"":"", "unknown":"unknown", "unclassified":"unclassified", "uncertain":"uncertain"}
 TRUE={"1","true","yes","y","是"}
 
@@ -58,13 +58,15 @@ def merge_row(dst:dict,src:dict,user_seed:bool=False,origin:str=""):
         if origin not in current:current.append(origin)
         dst["discovery_origin"]="|".join(current)
     dst["aliases"]=_merge_aliases(dst.get("aliases",""),src.get("aliases","") or "")
-    for field in ("entity_type","market_scope","operating_region","market_role","activity_status","platform_native","salience_basis","universe_status"):
+    for field in ("entity_type","market_scope","operating_region","market_role","activity_status","platform_native","salience_basis","universe_status","downgrade_reason"):
         incoming=(src.get(field) or "").strip()
         if not incoming:continue
         if field in {"operating_region","salience_basis"}:
             if not dst.get(field):dst[field]=incoming
         elif field=="platform_native":
             if incoming.lower() in TRUE:dst[field]="true"
+        elif field=="downgrade_reason":
+            if not dst.get(field):dst[field]=incoming
         elif _is_default(field,dst.get(field,"")):
             dst[field]=incoming
     dst["notes"]=_merge_text(dst.get("notes",""),src.get("notes","") or "")
@@ -83,7 +85,7 @@ def build_review(rows:list[dict],meta:dict)->dict:
     counts=Counter(flat)
     unresolved=[{"entity":r.get("canonical_name",""),"issue":r.get("notes") or r.get("salience_basis") or "待补实体/市场证据"}
                 for r in rows if r.get("universe_status")!="included" or r.get("market_scope")=="unknown" or r.get("market_role")=="unclassified"]
-    seo=[r.get("canonical_name","") for r in rows if r.get("universe_status")!="included" and "seo" in ((r.get("notes","")+" "+r.get("salience_basis","")).lower())]
+    seo=[r.get("canonical_name","") for r in rows if r.get("downgrade_reason")=="seo-only"]
     seeds=[r.get("canonical_name","") for r in rows if (r.get("user_seed") or "").lower() in TRUE]
     return {
       "schema_version":"2.2","region":meta.get("normalized_region") or meta.get("requested_region"),"research_mode":meta.get("research_mode"),
@@ -143,7 +145,7 @@ def build(run:Path):
             "salience_basis":source.get("salience_basis","") or "",
             # Seed alone is not automatic inclusion. It must be resolved/reviewed first.
             "universe_status":source.get("universe_status","") or ("unresolved" if user_seed else "observation"),
-            "confirmation_status":"needs-review","notes":source.get("notes","") or ""
+            "confirmation_status":"needs-review","downgrade_reason":source.get("downgrade_reason","") or "","notes":source.get("notes","") or ""
         }
         seen[key]=len(rows);rows.append(item)
     for s in meta.get("seed_entities",[]):add(str(s),True,"user-seed")
