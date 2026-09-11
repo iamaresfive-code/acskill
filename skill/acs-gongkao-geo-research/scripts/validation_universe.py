@@ -4,7 +4,7 @@ from pathlib import Path
 from validation_common import *
 
 def validate_universe(run:Path,meta:dict,issues:list[Issue],require_confirmed:bool):
-    ureq={"entity_id","canonical_name","aliases","entity_type","user_seed","discovery_origin","market_scope","operating_region","market_role","activity_status","platform_native","salience_basis","universe_status","confirmation_status","downgrade_reason","notes"}
+    ureq={"entity_id","canonical_name","aliases","entity_type","measurement_target","user_seed","discovery_origin","market_scope","operating_region","market_role","activity_status","platform_native","salience_basis","universe_status","confirmation_status","downgrade_reason","notes"}
     universe,_=rcsv(run/"market_universe.csv",issues,"market-universe",ureq)
     review=rjson(run/"universe_review.json",issues,"universe-review")
     ids=set();names=set();seeds=[str(x).strip() for x in meta.get("seed_entities",[]) if str(x).strip()];seed_names={norm(x) for x in seeds};seen_seed=set();by_name={}
@@ -17,6 +17,9 @@ def validate_universe(run:Path,meta:dict,issues:list[Issue],require_confirmed:bo
         names.add(name)
         if r.get("market_scope") not in VALID_SCOPES:issues.append(Issue("error","market-scope",f"{name} market_scope 无效"))
         if r.get("market_role") not in VALID_ROLES:issues.append(Issue("error","market-role",f"{name} market_role 无效"))
+        target=(r.get("measurement_target") or "").strip()
+        if target and target not in VALID_ENTITY_TARGETS:issues.append(Issue("error","entity-measurement-target",f"{name} measurement_target 必须 institution/ip/both"))
+        if require_confirmed and target not in VALID_ENTITY_TARGETS:issues.append(Issue("error","entity-measurement-target-required",f"{name} 在 Market Universe 确认前必须显式确定 measurement_target"))
         if r.get("universe_status") not in VALID_UNIVERSE:issues.append(Issue("error","universe-status",f"{name} universe_status 无效；v2.2 仅允许 included/observation/unresolved"))
         if r.get("confirmation_status") not in VALID_CONFIRM:issues.append(Issue("error","confirmation-status",f"{name} confirmation_status 无效"))
         reason=(r.get("downgrade_reason") or "").strip()
@@ -39,7 +42,7 @@ def validate_universe(run:Path,meta:dict,issues:list[Issue],require_confirmed:bo
         expected_ip=sum(r.get("universe_status")=="included" and r.get("market_role")=="expert-ip" for r in universe)
         if review.get("expert_ip_included_count") is not None and review.get("expert_ip_included_count")!=expected_ip:issues.append(Issue("error","review-expert-ip-count",f"expert_ip_included_count={review.get('expert_ip_included_count')}，CSV={expected_ip}"))
         expected_seo=sorted(r.get("canonical_name","") for r in universe if r.get("downgrade_reason")=="seo-only")
-        if sorted(review.get("seo_only_downgraded") or [])!=expected_seo:issues.append(Issue("error","review-seo-downgrade",f"seo_only_downgraded 与结构化 downgrade_reason 不一致"))
+        if sorted(review.get("seo_only_downgraded") or [])!=expected_seo:issues.append(Issue("error","review-seo-downgrade","seo_only_downgraded 与结构化 downgrade_reason 不一致"))
         buckets=review.get("buckets") or {};expected_keys={"A_national_benchmarks","B_local_regional","C_expert_ip","D_observation_or_other"}
         if set(buckets)!=expected_keys:issues.append(Issue("error","review-bucket-schema",f"Universe Review buckets 必须精确为：{', '.join(sorted(expected_keys))}"))
         flat=[]
