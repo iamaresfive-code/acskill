@@ -2,203 +2,188 @@
 
 > 公考行业 GEO 竞争研究 Skill：先确认“研究谁”，再测“AI 到底提不提”，最后用公开资产解释原因。
 
-v2.2 不把“网页多”直接等同于“AI GEO 强”。正式研究拆成三层：
+v2.2 正式拆成三层：
 
 1. **Market Universe**：地区里真正值得研究的机构、品牌、Expert/IP；
 2. **AI Answer Measurement**：固定无品牌问题下，AI 实际提名谁；
 3. **GEO Asset Readiness**：官网、平台、第三方证据、地域语义等公开资产，用于解释为什么可能被 AI 识别/引用。
 
-## Preflight
-
-第一次只确认：
-
-1. 调查地区；
-2. User Seed：希望一定覆盖的机构/品牌/老师 IP；
-3. 是否允许系统补充竞争主体。
-
-Seed 只保证研究和解析，不加分、不自动 included、不自动成为本土核心。
-
 正式输出固定为 Word：`deliverables/report.docx`。
 
-## Market Universe Gate
+## Stage 1：Market Universe
 
-System Discovery 后必须先形成并让用户确认：
+Preflight 只确认地区、User Seed、是否允许系统补充。Seed 只保证研究和解析，不自动 included、不加分。
 
-- A 全国 Benchmark；
-- B 本地/区域机构；
-- C Expert/IP；
-- D Observation/Historical/Unresolved。
-
-确认前：
+Market Universe 必须显式审定：
 
 ```text
-market_universe_confirmed = false
-measurement_allowed = false
+market_scope
+market_role
+measurement_target = institution | ip | both
+universe_status
 ```
 
-确认后才能进入 Measurement。`market_scope` 只能来自实体/地域事实，不能由 Recall 低反推“本地”。全国 Benchmark 默认保持少量代表性样本；SEO 榜单出现不等于当地核心竞争者。
+A/B/C/D Market Bucket 与 Measurement Target 是**两条独立轴**。Stage 2/3 不得因为 `entity_type=studio/person` 或主体名称含“工作室”就重新分桶。
 
-## Stage 2.1 Measurement Contract
+既有 Run 若缺 `measurement_target`：
 
-广东真实回归证明：单引擎 + WorkBuddy 外部 Web Search 增强得到的结果，不能包装成“模型原生 Recall”。因此当前 v2.2 Draft 对 Measurement 增加了明确协议。
+```bash
+python3 scripts/prepare_measurement_target_audit.py <run-dir>
+# Reviewer 填 measurement_target_audit.csv：new_explicit_target / evidence_basis / review_status=confirmed
+python3 scripts/apply_measurement_target_audit.py <run-dir>
+python3 scripts/refresh_universe_review.py <run-dir>
+python3 scripts/validate_run.py <run-dir> --stage universe --strict
+```
 
-### 1. 先探测真实 AI Engine
+确认 Universe：
 
-执行者必须先实际确认哪些 AI / AI Search 能返回回答，再运行：
+```bash
+python3 scripts/confirm_market_universe.py <run-dir> --approved-by user
+```
+
+没有显式 measurement_target 的主体不能被确认。
+
+## Stage 2：Measurement Contract
+
+先真实探测可用 AI/AI Search 引擎，禁止模拟第二模型。代理/本地服务探测要检查 HTTP 状态码和响应体，不能只看 shell exit code；必要时绕过代理复核。
+
+配置示例：
 
 ```bash
 python3 scripts/configure_measurement.py <run-dir> \
   --engine actual-engine \
-  --context-mode native \
-  --profile snapshot \
-  --repeat-runs 1 \
-  --allow-shared-context
-```
-
-禁止模拟第二模型。0/1/2/3+ 个真实引擎分别标为 `asset-audit-only / single-engine / limited-multi-engine / multi-engine`。
-
-### 2. Answer Context 必须分开
-
-每个 Run 只能使用一种：
-
-- `native`：模型原生、不额外搜索；
-- `engine-native-search`：产品自身联网/搜索回答；
-- `external-search-augmented`：执行者先 Web Search/RAG，再把检索上下文给模型。
-
-第三种只能叫“外部检索增强下的 AI Answer Visibility”，不能叫模型原生 Recall。
-
-### 3. Snapshot 与 Release 分开
-
-- `snapshot`：允许每个 query×engine 采 1 次，用于快速压力测试；
-- `release`：正式发布口径，每个 query×engine 至少 **3 次独立采样**，`sample_run=1..N`，并要求 fresh context + 唯一 `context_id`。
-
-正式发布示例：
-
-```bash
-python3 scripts/configure_measurement.py <run-dir> \
-  --engine actual-engine \
-  --context-mode native \
+  --context-mode external-search-augmented \
   --profile release \
   --repeat-runs 3 \
-  --fresh-context
+  --fresh-context \
+  --context-isolation programmatic \
+  --query-variant-mode semantic-retrieval-variants \
+  --page-collection-status not-collected \
+  --observation-date 2026-09-10
 ```
 
-## Raw Mention 不等于 Nomination
+脚本同时写 `run_metadata.json` 与 `measurement_config.json`。
 
-`ai_mentions.csv` 同时保存原始提及和正式正向提名。关键字段：
+### Context mode
 
-```text
-mention_rank
-nomination_rank
-resolution_status
-mention_intent
-citation_refs
-```
+- `native`：模型原生回答；
+- `engine-native-search`：AI 产品自身联网/搜索；
+- `external-search-augmented`：外部 Web Search/RAG 后再交给 LLM。
 
-`mention_intent`：
+第三种只能称“外部检索增强下的 AI Answer Visibility”，不能称模型原生 Recall。
 
-- recommended
-- listed
-- comparison
-- caveat
-- excluded
+### Context isolation
 
-只有：
+- `api-isolated`
+- `product-isolated`
+- `programmatic`
+
+`programmatic` 必须填写 `fresh_context_note`，披露同会话残余风险。
+
+### Exact repeat vs semantic variants
+
+- `exact-query-repeat`：同一 canonical query 原样重复；
+- `semantic-retrieval-variants`：语义等价检索式变体，用于 Query/Retrieval Robustness。
+
+如果同 Query 被搜索通道强缓存，可以切 semantic variants，但不得继续把它描述为严格同条件随机 repeat。
+
+## Raw Mention 与 Positive Nomination
+
+`ai_mentions.csv` 保留所有原始 Mention。只有：
 
 ```text
 explicit-name / verified-alias
 + resolved
 + entity_correct=true
-+ recommended / listed
++ mention_intent in {recommended, listed}
 ```
 
 才进入 Nomination Rate。
 
-例如“花生十三不是广东专属，本条不展开”仍要保留 raw mention，但应标 `excluded` 或 `caveat`，不能提高正向 Nomination。
+Intent 锚定原则：
 
-Top3 / First Mention 从 `nomination_rank` 派生，不从网页排名或原始 mention 顺序硬推。
+- 明确否定/排除 → `excluded`
+- 明确条件性弱推荐/降低优先级 → `caveat`
+- 明确推荐/优先 → `recommended`
+- 正常进入候选/榜单且未否定 → `listed`
+- 仅作参照 → `comparison`
 
-## Emergent Competitor 不得删除
+**榜单成员附带普通缺点仍然是 listed**。例如“第二名华图，线下体系成熟，但价格偏高”不能仅因“价格偏高”降为 caveat。
 
-真实 AI Answer 或 SERP title/snippet 出现 Stage 1 Universe 外主体时，统一登记到 `ai_emergent_entities.csv`。它现在承担 Stage 2 emergent registry：
+完整正例/反例见 `references/data-schema.md`。
 
-- AI 来源记录 `source_answer_ids`；
-- SERP 来源记录 `source_result_ids`；
-- unresolved 主体仍保留 raw mention、rank、来源；
-- 只有 resolved 主体进入正式 Metrics；
-- emergent 永远单列，不偷偷改写 Stage 1 已确认主榜。
+## 可复现 Annotation Pipeline
 
-## Citation 必须是实体级
+如果已有 `mentions_raw.json`：
 
-不能因为一个回答“整体有 citations”就把所有品牌 `citation_linked=true`。
+```bash
+python3 scripts/prepare_annotation_tasks.py <run-dir>
+# Reviewer 根据 references/data-schema.md 给 annotation_labels.csv 打语义标签
+python3 scripts/apply_annotation_labels.py <run-dir>
+```
 
-若 `citation_linked=true`：
+`apply_annotation_labels.py` 自动派生 `nomination_rank / top3 / first_mention`，避免人工顺序漂移。`resolution_status` 从上游实体解析冻结，Annotation Reviewer 不重新猜实体工商/解析状态。
 
-- `citation_refs` 至少有一个真实 URL；
-- URL 必须存在于该 Answer Cell 原始 citations；
-- 采样员确认它指向该主体、官方域或明确绑定该实体的页面。
+Release 模式的 Annotation Blind Recheck 与 Resolution Audit 分开：
 
-## 核心指标
+- `annotation_rechecks.csv`：只看 Mention/Intent/Positive Set/顺序；
+- `resolution_rechecks.csv`：单独检查 canonical mapping 与 resolved/unresolved。
 
-正式透明输出：
+## AI Metrics
 
-- Raw Mention Rate
-- Nomination Rate
-- Top3 Rate
-- First Mention Rate
-- Citation Rate
-- Engine Coverage Rate
-- Cross-model Consistency
+```bash
+python3 scripts/compute_ai_metrics.py <run-dir>
+```
 
-单引擎时 Cross-model Consistency 必须 N.A.。不再造黑箱“AI GEO 总分”。
+`ai_metrics.csv` 一行 = `entity_id × measurement_target`。Hybrid `both` 必须分别产生 institution 与 ip 两行，分母不能混合。
 
-报告应优先同时显示命中次数和分母，例如 `5/60 (8.3%)`，避免把小样本差异包装成稳定排名。
+透明指标：Raw Mention Rate、Nomination Rate、Top3 Rate、First Mention Rate、Citation Rate、Engine Coverage Rate、Cross-model Consistency。单引擎时 Cross-model Consistency 必须 N.A.。
 
-## Open-Web 与 AI Measurement 物理分离
+## Robustness
+
+```bash
+python3 scripts/compute_variant_robustness.py <run-dir>
+```
+
+正式产出：
+
+- `variant_robustness.csv`
+- `query_set_similarity.csv`
+- `robustness_summary.json`
+
+旧式“只看至少命中过一次的 entity×query 中有多少 3/3”的指标改名为：
+
+`positive_persistence_3of3_rate`
+
+它**不是 Overall Repeat Stability**。同时必须看 0/N、1/N、2/N、N/N Hit Pattern、Pairwise Positive-set Jaccard、Exact Set Match。
+
+如果 Run 使用 semantic variants，这些只能解释为 Query/Retrieval Robustness。
+
+## Open-Web 与 Page Layer
 
 - `serp_results.csv`：真实 Result Item；
-- `serp_mentions.csv`：只允许 title/snippet 可见提及；
-- `page_mentions.csv`：打开正文后发现的提及。
+- `serp_mentions.csv`：只允许 title/snippet；
+- `page_mentions.csv`：打开正文后的提及。
 
-一篇“十大机构”正文写 10 家，只产生 Page Mention，不产生 10 个 SERP/AI Hit。若本次不抓网页正文，可保留空的 `page_mentions.csv`，但必须披露 page layer 未采样。
-
-## 20% Blind Recheck
-
-Answer Cells >=10 时，至少随机复判 20%。第二 reviewer 不看首轮判断，复核 raw mention、alias、entity、mention_intent、nomination_rank、Top3、First Mention、实体级 citation。分歧必须记录 resolution。
+`page_collection_status=not-collected` 时空表表示“未采集”，不是“正文 0 提及”。Stage 3 Asset Audit 前应补 Page Collection 或明确披露。
 
 ## Validator
 
 ```bash
 python3 scripts/validate_run.py <run-dir> --stage universe --strict
-python3 scripts/validate_run.py <run-dir> --stage measurement --strict
-python3 scripts/validate_run.py <run-dir> --stage report --strict
-```
-
-Measurement Validator 还会检查：引擎可达性确认、sampling_mode、context mode、repeat coverage、fresh context、raw/nomination rank、emergent registry、citation refs、SERP 物理分离与 recheck coverage。
-
-## GEO Asset Readiness
-
-解释层 /100：Entity Clarity /25、Regional Semantic Density /20、Open-Web Assets /15、External Authority /15、Content Depth & Freshness /10、Data/Tool Assets /10、Platform Coverage /5。它不等于 AI Answer Visibility。
-
-## 运行顺序
-
-```bash
-python3 scripts/preflight.py ...
-python3 scripts/build_market_universe.py <run-dir>
-python3 scripts/refresh_universe_review.py <run-dir>
-python3 scripts/validate_run.py <run-dir> --stage universe --strict
-python3 scripts/confirm_market_universe.py <run-dir> --approved-by user
-# 实际探测 AI Engine
-python3 scripts/configure_measurement.py <run-dir> ...
-# Agent 执行固定题池并写入 raw answers / mentions / emergent / SERP / rechecks
 python3 scripts/compute_ai_metrics.py <run-dir>
+python3 scripts/compute_variant_robustness.py <run-dir>
 python3 scripts/validate_run.py <run-dir> --stage measurement --strict
-python3 scripts/score_assets.py <run-dir>
-python3 scripts/generate_charts.py <run-dir>
-python3 scripts/build_report_model.py <run-dir>
-python3 scripts/generate_report_docx.py <run-dir>
 python3 scripts/validate_run.py <run-dir> --stage report --strict
 ```
+
+Release Validator 检查 target-specific denominator、query variant、context isolation disclosure、Annotation Recheck、robustness artifacts 等，但在广东/天津/山东多地区与多引擎校准前，不把 30%/80% 等经验值硬编码成永久理论门槛。
+
+## Report Contract
+
+唯一正式交付：`deliverables/report.docx`。Stage 1 A/B/C/D 分桶被冻结；`build_report_model.py` 和 `generate_charts.py` 不得再通过 entity_type 重分组。Hybrid 的两套 target metrics 可同时保留，但不能反向修改 Market Role。
+
+数据低稳定或单引擎时，只能写“在本次协议下提名率最高/未形成正向召回”，禁止写“真实第一”“所有 AI 都不认识”“所有模型都不会推荐”。
 
 ## 依赖与测试
 
@@ -209,7 +194,7 @@ python3 -m py_compile scripts/*.py
 python3 scripts/test_v22.py
 ```
 
-第三方依赖缺失时 DOCX/图表集成测试可以 SKIP，但必须明确输出；核心研究协议测试不能因此整体崩溃。
+第三方依赖缺失时 DOCX/图表集成测试可以 SKIP，但核心协议测试不能崩溃。
 
 ## 发布纪律
 
