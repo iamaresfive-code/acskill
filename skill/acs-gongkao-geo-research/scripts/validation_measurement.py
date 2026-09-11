@@ -14,6 +14,8 @@ def validate_measurement(run:Path,meta:dict,issues:list[Issue],ids:set,mode:str)
     rreq={"recheck_id","sample_type","source_id","first_decision","second_decision","disagreement","resolution","recheck_by","notes"}
     xreq={"entity_id","canonical_name","aliases","measurement_target","market_scope","operating_region","resolution_status","source_answer_ids","source_result_ids","notes"}
     areq={"review_id","answer_id","first_positive_set","second_positive_set","first_intents","second_intents","disagreement","resolution","reviewer","notes"}
+    vreq={"answer_id","query_id","engine","model","sample_run","query_variant_id","evidence_status","assignment_basis","notes"}
+    creq={"mention_id","answer_id","entity_id","canonical_name","answer_citation_count","candidate_citation_refs","linked_citation_refs","citation_linked","link_basis","review_status","notes"}
     universe,_=rcsv(run/"market_universe.csv",issues,"market-universe-measurement",{"entity_id","canonical_name","measurement_target","universe_status"})
     queries,_=rcsv(run/"queries.csv",issues,"queries",qreq)
     answers=rjsonl(run/"ai_answers.jsonl",issues,"ai-answers")
@@ -49,6 +51,16 @@ def validate_measurement(run:Path,meta:dict,issues:list[Issue],ids:set,mode:str)
     if page_status=="not-collected" and page_mentions:issues.append(Issue("error","page-status-contradiction","page_collection_status=not-collected 但 page_mentions.csv 非空"))
     if page_status=="collected" and not page_mentions:issues.append(Issue("warning","page-collected-empty","Page Collection 标记为 collected 但 page_mentions.csv 为空；确认这是实际 0 命中而非未抓取"))
 
+    variant_manifest=[];vpath=run/"answer_variant_manifest.csv"
+    if vpath.is_file():variant_manifest,_=rcsv(vpath,issues,"answer-variant-manifest",vreq)
+    variant_by={};variant_seen=set()
+    for v in variant_manifest:
+        aid=(v.get("answer_id") or "").strip()
+        if not aid or aid in variant_seen:issues.append(Issue("error","variant-manifest-answer-id",f"answer_variant_manifest answer_id 重复/为空：{aid}"));continue
+        variant_seen.add(aid);variant_by[aid]=v
+        if v.get("evidence_status") not in {"native-recorded","legacy-reconstructed"}:issues.append(Issue("error","variant-evidence-status",f"{aid} evidence_status 必须 native-recorded/legacy-reconstructed"))
+        if not str(v.get("assignment_basis") or "").strip():issues.append(Issue("error","variant-assignment-basis",f"{aid} assignment_basis 不能为空"))
+
     qmap={q.get("query_id"):q for q in queries};answer_ids=set();answers_by_query=defaultdict(list);cell_keys=set();context_ids=set();variant_keys=defaultdict(set)
     for q in queries:
         if q.get("measurement_target") not in VALID_QUERY_TARGETS:issues.append(Issue("error","measurement-target",f"{q.get('query_id')} measurement_target 必须 institution/ip"))
@@ -60,8 +72,14 @@ def validate_measurement(run:Path,meta:dict,issues:list[Issue],ids:set,mode:str)
         if not str(a.get("response_text","")).strip():issues.append(Issue("error","empty-answer",f"{aid} 缺原始 response_text"))
         sr=intnum(a.get("sample_run"));sr=-1 if sr is None or sr<1 else sr
         if sr==-1:issues.append(Issue("error","sample-run",f"{aid} sample_run 必须 >=1"))
-        qv=str(a.get("query_variant_id") or "").strip()
-        if profile=="release" and not qv:issues.append(Issue("error","query-variant-id",f"{aid} release 采样必须记录 query_variant_id"))
+        side=variant_by.get(aid);native_qv=str(a.get("query_variant_id") or "").strip();side_qv=str((side or {}).get("query_variant_id") or "").strip()
+        if native_qv and side_qv and native_qv!=side_qv:issues.append(Issue("error","query-variant-conflict",f"{aid} raw query_variant_id 与 sidecar 不一致"))
+        qv=native_qv or side_qv
+        if side:
+            if side.get("query_id")!=qid:issues.append(Issue("error","variant-query-mismatch",f"{aid} sidecar query_id 与 Answer 不一致"))
+            if intnum(side.get("sample_run"))!=sr:issues.append(Issue("error","variant-run-mismatch",f"{aid} sidecar sample_run 与 Answer 不一致"))
+            if str(side.get("engine") or "")!=str(a.get("engine") or ""):issues.append(Issue("error","variant-engine-mismatch",f"{aid} sidecar engine 与 Answer 不一致"))
+        if profile=="release" and not qv:issues.append(Issue("error","query-variant-id",f"{aid} release 采样必须在 raw Answer 或 answer_variant_manifest.csv 记录 query_variant_id"))
         if qv:variant_keys[(qid,str(a.get("engine") or ""))].add(qv)
         cm=a.get("answer_context_mode") or ""
         if cm not in VALID_CONTEXT_MODES:issues.append(Issue("error","answer-context-mode",f"{aid} answer_context_mode 无效"))
@@ -75,6 +93,7 @@ def validate_measurement(run:Path,meta:dict,issues:list[Issue],ids:set,mode:str)
         key=(qid,str(a.get("engine") or ""),str(a.get("model") or ""),sr)
         if key in cell_keys:issues.append(Issue("error","answer-cell-duplicate",f"重复 Answer Cell：{key}"))
         cell_keys.add(key);answers_by_query[qid].append(a)
+    for aid in set(variant_by)-answer_ids:issues.append(Issue("error","variant-manifest-extra-answer",f"answer_variant_manifest.csv 引用不存在 answer_id：{aid}"))
     if mode=="scoped-geo-landscape" and not answers:issues.append(Issue("error","no-ai-measurement","正式 GEO Landscape 必须有 AI Answer Measurement"))
     declared=set(declared_engines)
     if declared:
@@ -147,7 +166,7 @@ def validate_measurement(run:Path,meta:dict,issues:list[Issue],ids:set,mode:str)
         refs=split_pipe(m.get("citation_refs"));linked=truth(m.get("citation_linked"));answer_refs=citation_urls(amap[aid])
         if linked:
             if not refs:issues.append(Issue("error","citation-ref-missing",f"{mid} citation_linked=true 但 citation_refs 为空"))
-            elif not any(r in answer_refs for r in refs):issues.append(Issue("error","citation-ref-not-in-answer",f"{mid} citation_refs 未出现在该 Answer Cell citations"))
+            elif not all(r in answer_refs for r in refs):issues.append(Issue("error","citation-ref-not-in-answer",f"{mid} citation_refs 存在未出现在该 Answer Cell citations 的 URL"))
         elif refs:issues.append(Issue("error","citation-ref-without-link",f"{mid} citation_linked=false 但仍填写 citation_refs"))
     for aid,ms in positive_by_answer.items():
         ranks=sorted(num(m.get("nomination_rank")) for m in ms if num(m.get("nomination_rank")) is not None)
@@ -155,6 +174,37 @@ def validate_measurement(run:Path,meta:dict,issues:list[Issue],ids:set,mode:str)
         for m in ms:
             nr=num(m.get("nomination_rank"))
             if truth(m.get("first_mention"))!=(nr==1):issues.append(Issue("error","first-rank-mismatch",f"{m.get('mention_id')} first_mention 与 nomination_rank={nr:g} 不一致"))
+
+    total_answer_citations=sum(len(citation_urls(a)) for a in answers);cpath=run/"citation_audit.csv";citation_audit=[]
+    if cpath.is_file():citation_audit,_=rcsv(cpath,issues,"citation-audit",creq)
+    if profile=="release" and total_answer_citations>0 and not cpath.is_file():issues.append(Issue("error","missing-citation-audit","release Answer Cells 含 citations 时必须完成独立 citation_audit.csv"))
+    if citation_audit:
+        cby={};seen=set()
+        for c in citation_audit:
+            mid=(c.get("mention_id") or "").strip()
+            if not mid or mid in seen:issues.append(Issue("error","citation-audit-mention-id",f"citation_audit mention_id 重复/为空：{mid}"));continue
+            seen.add(mid);cby[mid]=c
+        if profile=="release" and mention_ids-set(cby):issues.append(Issue("error","citation-audit-coverage",f"citation_audit 缺 mention：{sorted(mention_ids-set(cby))[:20]}"))
+        for m in mentions:
+            mid=m.get("mention_id");c=cby.get(mid)
+            if not c:continue
+            if c.get("answer_id")!=m.get("answer_id") or c.get("entity_id")!=m.get("entity_id"):issues.append(Issue("error","citation-audit-identity",f"{mid} audit answer/entity 与 ai_mentions 不一致"));continue
+            available=citation_urls(amap.get(m.get("answer_id"),{}));candidate=set(split_pipe(c.get("candidate_citation_refs")));linked_refs=split_pipe(c.get("linked_citation_refs"));expected=set(available)
+            if candidate!=expected:issues.append(Issue("error","citation-audit-candidates",f"{mid} candidate_citation_refs 必须等于原 Answer citations"))
+            if [x for x in linked_refs if x not in expected]:issues.append(Issue("error","citation-audit-ref",f"{mid} linked_citation_refs 含原 Answer 不存在 URL"))
+            if profile=="release" and c.get("review_status")!="confirmed":issues.append(Issue("error","citation-audit-unreviewed",f"{mid} citation review_status 必须 confirmed"))
+            if c.get("review_status")=="confirmed" and not linked_refs and not str(c.get("link_basis") or "").strip():issues.append(Issue("error","citation-audit-basis",f"{mid} 无实体链接时也必须写 link_basis"))
+            expected_linked=bool(linked_refs)
+            if truth(c.get("citation_linked"))!=expected_linked:issues.append(Issue("error","citation-audit-flag",f"{mid} citation_linked 与 linked_citation_refs 不一致"))
+            if truth(m.get("citation_linked"))!=expected_linked or set(split_pipe(m.get("citation_refs")))!=set(linked_refs):issues.append(Issue("error","citation-audit-not-applied",f"{mid} ai_mentions citation 字段未与 citation_audit 同步；运行 apply_citation_audit.py"))
+        if set(cby)-mention_ids:issues.append(Issue("error","citation-audit-extra",f"citation_audit 含不存在 mention_id：{sorted(set(cby)-mention_ids)[:20]}"))
+        if profile=="release" and total_answer_citations>0:
+            sp=run/"citation_audit_summary.json"
+            if not sp.is_file():issues.append(Issue("error","missing-citation-audit-summary","release citation audit 必须生成 citation_audit_summary.json"))
+            else:
+                summary=rjson(sp,issues,"citation-audit-summary")
+                if intnum(summary.get("audit_rows"))!=len(citation_audit):issues.append(Issue("error","citation-audit-summary-count","citation_audit_summary.audit_rows 与 CSV 不一致"))
+                if intnum(summary.get("total_answer_citation_refs"))!=total_answer_citations:issues.append(Issue("error","citation-audit-summary-refs","citation_audit_summary.total_answer_citation_refs 与原 Answer 不一致"))
 
     valid_serp_entity_ids=ids|emergent_ids
     for m in serp_mentions:
@@ -167,7 +217,6 @@ def validate_measurement(run:Path,meta:dict,issues:list[Issue],ids:set,mode:str)
     for p in page_mentions:
         if p.get("result_id") and p.get("result_id") not in rmap:issues.append(Issue("error","page-mention-result",f"{p.get('page_mention_id')} 引用不存在 result_id"))
 
-    # Target-specific metrics contract: one row per entity × target; hybrid entities require two rows.
     metric_keys=set();answer_den=defaultdict(int)
     for a in answers:answer_den[qmap.get(a.get("query_id"),{}).get("measurement_target","")]+=1
     expected_metric_keys=set()
