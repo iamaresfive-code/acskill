@@ -8,22 +8,13 @@
 
 ## 1. run_metadata.json
 
-核心字段：
+核心字段：requested_region / normalized_region / research_scope、seed_entities、allow_discovery_supplement、research_mode、market_universe_confirmed、measurement_allowed、sampling_mode、ai_engines_expected、ai_engine_access_checked、observation_date、measurement_profile、answer_context_mode_expected、repeat_runs_expected、fresh_context_required、context_isolation_level、query_variant_mode、page_collection_status、fresh_context_note。
 
-- requested_region / normalized_region / research_scope
-- seed_entities / allow_discovery_supplement / research_mode
-- market_universe_confirmed / measurement_allowed
-- sampling_mode / ai_engines_expected / ai_engine_access_checked
-- observation_date
-- measurement_profile: snapshot | release
-- answer_context_mode_expected: native | engine-native-search | external-search-augmented
-- repeat_runs_expected / fresh_context_required
-- context_isolation_level: api-isolated | product-isolated | programmatic
-- query_variant_mode: exact-query-repeat | semantic-retrieval-variants
-- page_collection_status: collected | partial | not-collected
-- fresh_context_note：当 `context_isolation_level=programmatic` 时必须披露残余上下文污染风险
+`query_variant_mode` 只允许：
+- `exact-query-repeat`
+- `semantic-retrieval-variants`
 
-`semantic-retrieval-variants` 表示同一个 canonical query 使用语义等价检索式变体测试 Query/Retrieval Robustness；不得描述为“完全同条件随机重复”。
+第二种只能解释为 Query/Retrieval Robustness，不能称严格同条件随机重复。
 
 ## 2. market_universe.csv
 
@@ -47,31 +38,50 @@ downgrade_reason
 notes
 ```
 
-`market_scope`: national / regional / local / unknown。
-
-`market_role`: national-benchmark / local-core / local-active / expert-ip / historical / observation / unclassified。
-
-`measurement_target` 是**显式测量轴**，不得由 `entity_type`、名称是否含“工作室”、或 `market_role` 在 Stage 2/3 重新推断：
+Market Bucket 与 Measurement Target 是两条独立轴。`measurement_target` 不得由 `entity_type`、名称是否含“工作室”或 Stage 2 AI Recall 静默推断。
 
 - `institution`：只进入机构题分母；
 - `ip`：只进入 IP/Expert 题分母；
-- `both`：同一实体同时进入机构题与 IP 题，但产生两行 target-specific Metrics，分母绝不混合。
+- `both`：同一实体分别产生 institution 与 ip 两行 target-specific Metrics，分母绝不混合。
 
-Market Bucket 与 Measurement Target 是两条独立轴。例如一个主体可以 `market_role=local-active` 且 `measurement_target=both`；Stage 2/3 不得据此把它从本地机构桶自动改到 Expert/IP 桶。
+`universe_status`: included / observation / unresolved。Seed 只保证研究与解析，不自动 included、不加分。
 
-`universe_status`: included / observation / unresolved。v2.2 不提供静默硬排除状态；observation/unresolved 仍参加 Measurement。
+### 2.1 measurement_target_audit.csv
 
-`confirmation_status`: needs-review / confirmed。Market Universe 确认前，所有主体必须显式审定 `measurement_target`。
+对旧 Run 或任何需要复核的 Universe，先运行：
 
-`downgrade_reason`: 空 / seo-only / insufficient-evidence / unresolvable / user-ruling / historical / out-of-scope。
+```bash
+python3 scripts/prepare_measurement_target_audit.py <run-dir>
+```
 
-User Seed 只保证研究与解析，不自动 included、不加分。Seed 与 System Discovery 同名时必须字段级合并。
+关键字段：
+
+```text
+entity_id
+canonical_name
+stage1_market_role
+market_bucket
+entity_type
+current_explicit_target
+candidate_target
+institution_evidence
+ip_evidence
+hybrid_signal
+hybrid_signal_basis
+cross_target_ai_signal
+new_explicit_target
+evidence_basis
+reviewer_reason
+changed
+review_status
+notes
+```
+
+`hybrid_signal` 只是强制 Reviewer 注意 IP-led Brand / 工作室 / 品牌+老师入口，不会自动赋值 `both`。若 `hybrid_signal=true`，应用前必须填写 `reviewer_reason`，说明为什么最终选择 institution/ip/both。
 
 ## 3. universe_review.json
 
-至少包含：schema_version、region、research_mode、market_universe_confirmed、measurement_allowed、total_entities、user_seed_count、system_discovery_count、seed_also_discovered_count、platform_native_count、expert_ip_included_count、distribution、buckets、bucket_audit、seo_only_downgraded、unresolved_or_weak。
-
-`distribution` 应包含 `measurement_target` 分布。A/B/C/D 四桶必须互斥且并集覆盖全部 Universe 主体。
+A/B/C/D 四桶必须互斥且覆盖全部 Universe；distribution 应包含 measurement_target。补 target 不得改变已确认 Market Bucket。
 
 ## 4. queries.csv
 
@@ -84,11 +94,11 @@ region
 status               # planned | sampled | skipped
 ```
 
-Query 本身只有 institution/ip 两类，不使用 both；both 属于实体侧。
+Query 侧没有 `both`；both 只属于实体侧。
 
 ## 5. ai_answers.jsonl
 
-每行一个 Answer Cell：
+新采样 Answer Cell 必须保存完整原文：
 
 ```json
 {
@@ -108,86 +118,50 @@ Query 本身只有 institution/ip 两类，不使用 both；both 属于实体侧
 }
 ```
 
-Release 模式必须记录 `query_variant_id`。若 `query_variant_mode=semantic-retrieval-variants`，不同 sample_run 对应不同 variant id；它们用于鲁棒性测试，不得冒充完全同 query 的随机 repeat。
+原始 Answer 是冻结证据。**不得为了通过新版 Validator 事后改写旧 `ai_answers.jsonl`。**
+
+### 5.1 answer_variant_manifest.csv
+
+历史 Run 若采样时还没有 `query_variant_id`，运行：
+
+```bash
+python3 scripts/prepare_answer_variant_manifest.py <run-dir>
+```
+
+生成 sidecar：
+
+```text
+answer_id
+query_id
+engine
+model
+sample_run
+query_variant_id
+evidence_status       # native-recorded | legacy-reconstructed
+assignment_basis
+notes
+```
+
+原 Answer 有字段时标 `native-recorded`；历史缺字段时按 `sample_run + query_variant_mode` 做迁移侧写并标 `legacy-reconstructed`。后者只是可审计迁移元数据，不代表当时逐 Cell 已记录真实变体搜索词。
+
+`validation_measurement.py` 与 `compute_variant_robustness.py` 优先读 raw Answer 的原生字段，缺失时读 sidecar；两者冲突直接报错。禁止静默 `run-{sample_run}` fallback。
 
 ## 6. mention_intent 五分类锚定
 
-`ai_mentions.csv` 中每一条 Raw Mention 都必须保留。正式正向 Nomination 只计算 `recommended + listed`。
+正式正向 Nomination 只计算 `recommended + listed`。
 
-### recommended
-AI 明确表达推荐、优先、首选、重点考虑。
+- `recommended`：明确推荐、优先、首选。
+- `listed`：正常进入推荐列表/候选集合且未明确否定。**附带普通缺点仍然是 listed。**
+- `comparison`：仅比较/背景参照，没有进入候选。
+- `caveat`：明确条件性弱推荐、降低优先级或显著保留意见。
+- `excluded`：明确不推荐、排除、不属于本题/地区。
 
-正例：
-- “我更推荐甲机构和乙机构。”
-- “第一选择可以先看甲机构。”
-- “如果只选一家，我会优先甲机构。”
+判定优先级：明确否定/排除 → excluded；明确条件性弱推荐/降级 → caveat；明确推荐 → recommended；正常入榜未否定 → listed；仅参照 → comparison。
 
-反例：
-- “甲机构规模较大。”（仅事实）
-- “相比甲机构，乙更偏线上。”（comparison）
-- “甲机构不适合本题。”（excluded）
-
-### listed
-主体被正常纳入推荐列表、排行榜、候选名单、可选方案，且没有明确否定。**列表成员附带普通优缺点仍然是 listed。**
-
-正例：
-- “推荐名单：1甲，2乙，3丙。”
-- “第二名乙机构，线下体系成熟，但价格偏高。”
-- “可关注甲、乙、丙，其中乙更适合基础较强者。”
-
-反例：
-- “甲仅用于与乙作比较。”（comparison）
-- “甲只在极少数条件下勉强可选，其他人不建议。”（caveat）
-- “甲不属于广东，本条不展开。”（excluded）
-
-### comparison
-只作为比较、背景或参照对象出现，没有进入推荐候选集合。
-
-正例：
-- “相比中公，粉笔更偏线上。”且没有把中公列为候选。
-- “甲的班型比乙更大。”仅作比较。
-- “业内常把甲和乙放在一起比较。”
-
-反例：
-- “甲、乙都可以考虑。”（listed/recommended）
-- “推荐第二名甲，但价格偏高。”（listed）
-- “不建议甲。”（excluded）
-
-### caveat
-存在**明确的条件性弱推荐、降低优先级或显著保留意见**。普通短板说明不是 caveat。
-
-正例：
-- “只有基础很强时才建议考虑甲，否则不优先。”
-- “甲可以作为备选，但不建议放在前两位。”
-- “若预算极低可考虑甲，其他情况更建议乙。”
-
-反例：
-- “甲值得考虑，但价格较高。”（仍可 listed/recommended）
-- “第二名甲，师资稳定但班型较大。”（listed）
-- “甲不适合广东省考。”（excluded）
-
-### excluded
-AI 明确不推荐、排除、不属于研究地区/题意、不纳入候选。
-
-正例：
-- “花生十三、高照并非广东专属，本条不展开。”
-- “甲不建议报。”
-- “甲不属于本题讨论范围。”
-
-反例：
-- “甲有短板但仍可考虑。”（listed/recommended）
-- “甲只适合特定人群。”（通常 caveat）
-- “甲与乙经常被比较。”（comparison）
-
-### 判定优先级
-
-1. 明确否定/排除 → excluded；
-2. 明确条件性弱推荐/降低优先级 → caveat；
-3. 明确推荐/优先 → recommended；
-4. 正常进入候选列表且未否定 → listed；
-5. 仅作参照 → comparison。
-
-“推荐/列入 + 普通短板”不得仅因短板自动降为 caveat。
+典型例：
+- “第二名华图，体系成熟，但价格偏高。” → listed。
+- “只有基础很强时才考虑甲，否则不优先。” → caveat。
+- “甲不属于广东，本条不展开。” → excluded。
 
 ## 7. ai_mentions.csv
 
@@ -198,9 +172,9 @@ entity_id
 mention_rank
 nomination_rank
 mentioned_name
-match_method          # explicit-name | verified-alias | citation-only
-resolution_status     # resolved | unresolved
-mention_intent        # recommended | listed | comparison | caveat | excluded
+match_method
+resolution_status
+mention_intent
 top3
 first_mention
 entity_correct
@@ -210,95 +184,94 @@ concepts
 notes
 ```
 
-`mention_rank` = Raw Mention 文本出现顺序；`nomination_rank` = 只在 resolved + entity_correct + recommended/listed 中连续编号。Top3/First Mention 以 nomination_rank 派生。unresolved 仍保留 Raw Mention，但不得进入 Positive Metrics。
+`mention_rank` 是 Raw Mention 顺序；`nomination_rank` 只在 explicit-name/verified-alias + resolved + entity_correct + recommended/listed 中连续编号。Top3/First Mention 从 nomination_rank 派生。
 
-## 8. Annotation Blind Recheck 与 Resolution Audit 分离
+**Intent Annotation 不负责 Citation。** `apply_annotation_labels.py` 会把 citation 字段重置为空/false，随后必须走独立 Citation Audit。
 
-Release 模式生成 `annotation_rechecks.csv`：
+## 8. Citation Audit：与 Intent Annotation 分链
 
-```text
-review_id
-answer_id
-first_positive_set
-second_positive_set
-first_intents
-second_intents
-disagreement
-resolution
-reviewer
-notes
+流程：
+
+```bash
+python3 scripts/prepare_citation_audit.py <run-dir>
+# Reviewer 审核实体级引用
+python3 scripts/apply_citation_audit.py <run-dir>
 ```
 
-第二 Reviewer 可看到原始 Answer、候选 Mention span、canonical entity 以及**冻结的** resolution_status；它只复判 Mention/Intent/正向集合/顺序，不重新猜工商或实体解析状态。
-
-Entity Resolution 正确性另做 `resolution_rechecks.csv`。不要把 Annotation Agreement 与 Resolution Agreement 混成一个百分比。80% 等一致率目前只能作为 provisional engineering target，不是行业通用理论门槛。
-
-## 9. ai_emergent_entities.csv
+`citation_audit.csv`：
 
 ```text
+mention_id
+answer_id
 entity_id
 canonical_name
-aliases
-measurement_target   # institution | ip
-market_scope
-operating_region
-resolution_status
-source_answer_ids
-source_result_ids
+answer_citation_count
+candidate_citation_refs
+linked_citation_refs
+citation_linked
+link_basis
+review_status
 notes
 ```
 
-AI/SERP 新主体先登记再解析；unresolved 原始提及不得物理删除。
+规则：
+- candidate refs 必须等于该 Answer Cell 原始 citations；
+- linked refs 必须真实存在于 candidate refs；
+- 只有明确绑定该实体、其官方域或足以明确识别该实体的页面才可链接；
+- 不能因为“回答整体有引用”把所有 mention 标 true；
+- 也不能因为 Intent Reviewer 没填 citation 就静默归零；
+- 没有实体级链接时也必须写 `link_basis`；
+- Release Run 只要 Answer Cells 含 citations，就必须有完整 `citation_audit.csv` 和 `citation_audit_summary.json`，并同步回 `ai_mentions.csv`。
 
-## 10. ai_metrics.csv
+## 9. Annotation Blind Recheck 与 Resolution Audit
 
-**一行 = entity_id × measurement_target。** Hybrid `both` 必须有两行。
+Release 使用 `annotation_rechecks.csv` 复核 Mention/Intent/Positive Set/顺序；Entity Resolution 另做 `resolution_rechecks.csv`。第二 Reviewer 可见冻结的 canonical mapping/resolution_status，但不重新猜实体解析。
 
-核心字段包括：entity_id、canonical_name、measurement_target、answer_cells、raw_mentioned_answers、raw_mention_rate、mentioned_answers、nomination_rate、top3_rate、first_mention_rate、citation_rate、engine_coverage_rate、cross_model_consistency。
+## 10. ai_emergent_entities.csv
 
-Institution 分母只由 institution Answer Cells 构成；IP 分母只由 IP Answer Cells 构成。禁止同一主体在报告中无解释地一会儿 `/60`、一会儿 `/24`。
+AI/SERP 新主体先登记再解析；unresolved 原始提及不得删除。Query/emergent target 仍只使用 institution/ip。
 
-## 11. Variant / Repeat Robustness
+## 11. ai_metrics.csv
 
-官方脚本：
+**一行 = entity_id × measurement_target。** Hybrid `both` 必须两行。
+
+核心字段：Raw Mention Rate、Nomination Rate、Top3 Rate、First Mention Rate、Citation Rate、Engine Coverage Rate、Cross-model Consistency。Institution 与 IP 分母禁止混合。
+
+## 12. Variant / Repeat Robustness
 
 ```bash
 python3 scripts/compute_variant_robustness.py <run-dir>
 ```
 
-产出：
-- `variant_robustness.csv`：entity × target × canonical query 的 0/N、1/N…N/N hit pattern；
-- `query_set_similarity.csv`：variant 两两 Positive Set Jaccard 与 Exact Match；
-- `robustness_summary.json`。
+产出：`variant_robustness.csv`、`query_set_similarity.csv`、`robustness_summary.json`。
 
-旧“Repeat Stability 12.3%”类指标正式更名为 `positive_persistence_3of3_rate`：仅在至少一次正向命中的 entity × query 中，三个 variant/run 全部正向命中的比例。**它不是 Overall Repeat Stability**，因为 0/3 稳定负例不在分母。
+`positive_persistence_3of3_rate` 只表示“至少一次正向命中的 entity×query 中，三个 variant/run 全部正向命中的比例”，**不是 Overall Repeat Stability**。同时必须报告 0/N、1/N…N/N Hit Pattern、Pairwise Positive-set Jaccard、Exact Set Match。
 
-同时必须报告 0/3、1/3、2/3、3/3 分布，以及 Pairwise Positive-set Jaccard / Exact Positive-set Match。若使用 semantic variants，解释为 Query/Retrieval Robustness。
+若使用 semantic variants，必须披露 variant evidence status；legacy-reconstructed 不得包装成原生记录。
 
-这些指标目前是 descriptive/diagnostic，不进入 GEO 总分；任何 30%/80% 等阈值只可标为 provisional engineering criterion，在多地区/多引擎校准前不得升级为普适理论门槛。
+## 13. SERP / Page / AI 分离
 
-## 12. SERP / Page / AI 分离
+`serp_results.csv` = 真实 Result Item；`serp_mentions.csv` 只允许 title/snippet；`page_mentions.csv` 只记录打开正文后的提及。
 
-`serp_results.csv` 一行一个真实 Result Item；`serp_mentions.csv` 只允许 title/snippet；`page_mentions.csv` 只记录打开网页后的正文提及。
+`page_collection_status=not-collected` 时空表表示“未采集”，不是正文 0 提及。
 
-`page_collection_status=not-collected` 时，空 `page_mentions.csv` 表示“未采集”，不表示“0 个正文提及”。Stage 3 Asset Audit 前应补 Page Collection 或显著披露缺口。
-
-## 13. GEO Asset Readiness
-
-Asset Inputs：Entity Clarity / Regional Semantic Density / Open-Web Assets / External Authority / Content Depth & Freshness / Data/Tool Assets / Platform Coverage。它只解释资产基础，不等价于 AI Answer Visibility。
-
-## 14. Validator stages
+## 14. Release Validator 要点
 
 ```bash
 python3 scripts/validate_run.py <run-dir> --stage universe --strict
 python3 scripts/compute_ai_metrics.py <run-dir>
 python3 scripts/compute_variant_robustness.py <run-dir>
 python3 scripts/validate_run.py <run-dir> --stage measurement --strict
-python3 scripts/validate_run.py <run-dir> --stage report --strict
 ```
 
-Release Validator 校验 robustness artifact 是否存在，但在跨地区/跨引擎校准前不把某个经验阈值硬编码为永久 error gate。
+Release Validator 检查：target-specific denominator、effective query variant、sidecar identity/evidence、context isolation、Annotation Recheck、robustness artifacts，以及 Answer 有 citations 时的独立 Citation Audit 完整性。
 
-## 15. deliverables/
+任何 30%/80% 等经验阈值在多地区/多引擎校准前只可作为 diagnostic，不作为永久理论 gate。
+
+## 15. 测试纪律
+
+`test_v22.py` 只有第三方依赖确实缺失时才允许 DOCX/图表集成测试 SKIP。AssertionError、Validator failure、RuntimeError 等必须让测试失败并返回非 0；禁止宽泛捕获后伪装成 SKIP。
+
+## 16. deliverables/
 
 v2.2 唯一正式交付：`deliverables/report.docx`。正式目录不得同时生成 report.pdf/report.html。
