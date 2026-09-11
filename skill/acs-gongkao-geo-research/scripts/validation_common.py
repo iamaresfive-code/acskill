@@ -10,13 +10,17 @@ VALID_SCOPES={"national","regional","local","unknown"}
 VALID_ROLES={"national-benchmark","local-core","local-active","expert-ip","historical","observation","unclassified"}
 VALID_UNIVERSE={"included","observation","unresolved"}
 VALID_CONFIRM={"needs-review","confirmed"}
-VALID_TARGETS={"institution","ip"}
+VALID_QUERY_TARGETS={"institution","ip"}
+VALID_ENTITY_TARGETS={"institution","ip","both"}
+# Backward-compatible alias: query/emergent rows still use institution/ip only.
+VALID_TARGETS=VALID_QUERY_TARGETS
 VALID_MATCH={"explicit-name","verified-alias","citation-only"}
 VALID_MENTION_INTENTS={"recommended","listed","comparison","caveat","excluded"}
 POSITIVE_INTENTS={"recommended","listed"}
 VALID_CONTEXT_MODES={"native","engine-native-search","external-search-augmented"}
 VALID_MEASUREMENT_PROFILES={"snapshot","release"}
 VALID_DOWNGRADE_REASONS={"","seo-only","insufficient-evidence","unresolvable","user-ruling","historical","out-of-scope"}
+VALID_PAGE_COLLECTION={"collected","not-collected","partial"}
 STAGES={"universe","measurement","report","full"}
 
 @dataclass
