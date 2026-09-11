@@ -6,32 +6,33 @@
 {"schema_version":"2.2","skill_version":"2.2","official_output_format":"docx"}
 ```
 
-## run_metadata.json
+## 1. run_metadata.json
 
 核心字段：
 
 - requested_region / normalized_region / research_scope
-- seed_entities
-- allow_discovery_supplement
-- research_mode: scoped-geo-landscape | blind-discovery-scan
-- market_universe_confirmed
-- measurement_allowed
-- sampling_mode: multi-engine | limited-multi-engine | single-engine | asset-audit-only | pending
-- ai_engines_expected
-- ai_engine_access_checked
-- measurement_profile: snapshot | release
-- answer_context_mode_expected: native | engine-native-search | external-search-augmented | pending
-- repeat_runs_expected
-- fresh_context_required
+- seed_entities / allow_discovery_supplement / research_mode
+- market_universe_confirmed / measurement_allowed
+- sampling_mode / ai_engines_expected / ai_engine_access_checked
 - observation_date
+- measurement_profile: snapshot | release
+- answer_context_mode_expected: native | engine-native-search | external-search-augmented
+- repeat_runs_expected / fresh_context_required
+- context_isolation_level: api-isolated | product-isolated | programmatic
+- query_variant_mode: exact-query-repeat | semantic-retrieval-variants
+- page_collection_status: collected | partial | not-collected
+- fresh_context_note：当 `context_isolation_level=programmatic` 时必须披露残余上下文污染风险
 
-## market_universe.csv
+`semantic-retrieval-variants` 表示同一个 canonical query 使用语义等价检索式变体测试 Query/Retrieval Robustness；不得描述为“完全同条件随机重复”。
+
+## 2. market_universe.csv
 
 ```text
 entity_id
 canonical_name
 aliases
 entity_type
+measurement_target   # institution | ip | both
 user_seed
 discovery_origin
 market_scope
@@ -50,69 +51,29 @@ notes
 
 `market_role`: national-benchmark / local-core / local-active / expert-ip / historical / observation / unclassified。
 
-`universe_status`: included / observation / unresolved。
+`measurement_target` 是**显式测量轴**，不得由 `entity_type`、名称是否含“工作室”、或 `market_role` 在 Stage 2/3 重新推断：
 
-v2.2 不提供静默硬排除状态：
-- `included`：进入正式 A/B/C 主榜；
-- `observation`：Stage 1 不进入主榜，但仍参加 AI Answer Measurement；
-- `unresolved`：实体/市场证据仍不足，继续保留并参加 Measurement，结果需谨慎解释。
+- `institution`：只进入机构题分母；
+- `ip`：只进入 IP/Expert 题分母；
+- `both`：同一实体同时进入机构题与 IP 题，但产生两行 target-specific Metrics，分母绝不混合。
 
-若用户确认后明确不要研究某主体，应从 Market Universe 合同中移除并在确认记录/报告审计中说明；不要使用未定义的 `excluded` 状态让主体静默跳过 Measurement。
+Market Bucket 与 Measurement Target 是两条独立轴。例如一个主体可以 `market_role=local-active` 且 `measurement_target=both`；Stage 2/3 不得据此把它从本地机构桶自动改到 Expert/IP 桶。
 
-`confirmation_status`: needs-review / confirmed。
+`universe_status`: included / observation / unresolved。v2.2 不提供静默硬排除状态；observation/unresolved 仍参加 Measurement。
 
-`downgrade_reason`：为空或以下枚举之一：`seo-only / insufficient-evidence / unresolvable / user-ruling / historical / out-of-scope`。`included` 主体不得保留 downgrade_reason；`seo_only_downgraded` 必须从这个结构化字段生成，禁止再靠 notes 中是否出现 “SEO” 字样判断。
+`confirmation_status`: needs-review / confirmed。Market Universe 确认前，所有主体必须显式审定 `measurement_target`。
 
-重要：User Seed 初次建池不能因为是 Seed 就自动获得 included；若尚未完成实体解析/市场核验，应为 unresolved + needs-review。
+`downgrade_reason`: 空 / seo-only / insufficient-evidence / unresolvable / user-ruling / historical / out-of-scope。
 
-当 Seed 与 System Discovery 同名时，必须字段级合并，不能只保留 `user_seed=true` 后丢弃 Discovery 携带的 aliases / scope / role / salience_basis / notes。
+User Seed 只保证研究与解析，不自动 included、不加分。Seed 与 System Discovery 同名时必须字段级合并。
 
-## universe_review.json
+## 3. universe_review.json
 
-Stage 1 的机器可审计确认材料。至少包含：
+至少包含：schema_version、region、research_mode、market_universe_confirmed、measurement_allowed、total_entities、user_seed_count、system_discovery_count、seed_also_discovered_count、platform_native_count、expert_ip_included_count、distribution、buckets、bucket_audit、seo_only_downgraded、unresolved_or_weak。
 
-```text
-schema_version
-region
-research_mode
-market_universe_confirmed
-measurement_allowed
-total_entities
-user_seed_count
-user_seed_all_present
-system_discovery_count
-seed_also_discovered_count
-platform_native_count
-expert_ip_included_count
-distribution
-buckets
-bucket_audit
-seo_only_downgraded
-unresolved_or_weak
-message
-```
+`distribution` 应包含 `measurement_target` 分布。A/B/C/D 四桶必须互斥且并集覆盖全部 Universe 主体。
 
-`system_discovery_count` 只统计非 User Seed、由系统发现/平台发现进入 Universe 的主体；Seed 后续也被系统搜到时记入 `seed_also_discovered_count`，不重复算进 system discovery only。
-
-`buckets` 必须精确为四个互斥集合：
-
-```text
-A_national_benchmarks
-B_local_regional
-C_expert_ip
-D_observation_or_other
-```
-
-四个 bucket 不允许重叠，且并集必须等于 `market_universe.csv` 全部主体。
-
-Market Universe 被 Agent / reviewer 修改后，使用：
-
-```bash
-python3 scripts/refresh_universe_review.py <run-dir>
-python3 scripts/validate_run.py <run-dir> --stage universe --strict
-```
-
-## queries.csv
+## 4. queries.csv
 
 ```text
 query_id
@@ -123,9 +84,11 @@ region
 status               # planned | sampled | skipped
 ```
 
-## ai_answers.jsonl
+Query 本身只有 institution/ip 两类，不使用 both；both 属于实体侧。
 
-每行一个 JSON：
+## 5. ai_answers.jsonl
+
+每行一个 Answer Cell：
 
 ```json
 {
@@ -134,46 +97,106 @@ status               # planned | sampled | skipped
   "engine":"ChatGPT",
   "model":"...",
   "sample_run":1,
-  "context_id":"ctx-A001",
+  "query_variant_id":"canonical",
+  "context_id":"...",
   "fresh_context":true,
-  "answer_context_mode":"native",
+  "answer_context_mode":"external-search-augmented",
   "sampled_at":"ISO8601",
-  "response_text":"完整回答",
+  "response_text":"完整原始回答",
   "citations":[],
   "notes":""
 }
 ```
 
-## ai_emergent_entities.csv
+Release 模式必须记录 `query_variant_id`。若 `query_variant_mode=semantic-retrieval-variants`，不同 sample_run 对应不同 variant id；它们用于鲁棒性测试，不得冒充完全同 query 的随机 repeat。
 
-Stage 2 中，如果真实 AI 回答或 SERP title/snippet 自然出现 **Stage 1 已确认 Market Universe 之外** 的机构/品牌/IP，不能静默忽略，也不能回写污染已确认主榜。继续沿用 `ai_emergent_entities.csv` 文件名以兼容 v2.2 现有链路，但它实际承担 **Stage 2 emergent registry（AI + SERP）**。先写入：
+## 6. mention_intent 五分类锚定
 
-```text
-entity_id
-canonical_name
-aliases
-measurement_target   # institution | ip
-market_scope          # national | regional | local | unknown
-operating_region
-resolution_status     # resolved | unresolved
-source_answer_ids     # 用 | 分隔，可为空
-source_result_ids     # 用 | 分隔，可为空，指向 serp_results.csv result_id
-notes
-```
+`ai_mentions.csv` 中每一条 Raw Mention 都必须保留。正式正向 Nomination 只计算 `recommended + listed`。
 
-- `source_answer_ids` 与 `source_result_ids` 至少一类非空；AI 新主体记录 Answer 来源，SERP 新主体记录 Result 来源，也可两者兼有；
-- `resolved`：实体解析成立，可进入正式 `ai_metrics.csv`；
-- `unresolved`：原始 mention / rank / 来源仍必须保留在 `ai_mentions.csv` 或 `serp_mentions.csv`，但不得进入正式 Nomination Metrics；
-- emergent 主体只能在报告中单列，不自动进入 Stage 1 已确认的全国/本地/IP 主榜。
+### recommended
+AI 明确表达推荐、优先、首选、重点考虑。
 
-## ai_mentions.csv
+正例：
+- “我更推荐甲机构和乙机构。”
+- “第一选择可以先看甲机构。”
+- “如果只选一家，我会优先甲机构。”
+
+反例：
+- “甲机构规模较大。”（仅事实）
+- “相比甲机构，乙更偏线上。”（comparison）
+- “甲机构不适合本题。”（excluded）
+
+### listed
+主体被正常纳入推荐列表、排行榜、候选名单、可选方案，且没有明确否定。**列表成员附带普通优缺点仍然是 listed。**
+
+正例：
+- “推荐名单：1甲，2乙，3丙。”
+- “第二名乙机构，线下体系成熟，但价格偏高。”
+- “可关注甲、乙、丙，其中乙更适合基础较强者。”
+
+反例：
+- “甲仅用于与乙作比较。”（comparison）
+- “甲只在极少数条件下勉强可选，其他人不建议。”（caveat）
+- “甲不属于广东，本条不展开。”（excluded）
+
+### comparison
+只作为比较、背景或参照对象出现，没有进入推荐候选集合。
+
+正例：
+- “相比中公，粉笔更偏线上。”且没有把中公列为候选。
+- “甲的班型比乙更大。”仅作比较。
+- “业内常把甲和乙放在一起比较。”
+
+反例：
+- “甲、乙都可以考虑。”（listed/recommended）
+- “推荐第二名甲，但价格偏高。”（listed）
+- “不建议甲。”（excluded）
+
+### caveat
+存在**明确的条件性弱推荐、降低优先级或显著保留意见**。普通短板说明不是 caveat。
+
+正例：
+- “只有基础很强时才建议考虑甲，否则不优先。”
+- “甲可以作为备选，但不建议放在前两位。”
+- “若预算极低可考虑甲，其他情况更建议乙。”
+
+反例：
+- “甲值得考虑，但价格较高。”（仍可 listed/recommended）
+- “第二名甲，师资稳定但班型较大。”（listed）
+- “甲不适合广东省考。”（excluded）
+
+### excluded
+AI 明确不推荐、排除、不属于研究地区/题意、不纳入候选。
+
+正例：
+- “花生十三、高照并非广东专属，本条不展开。”
+- “甲不建议报。”
+- “甲不属于本题讨论范围。”
+
+反例：
+- “甲有短板但仍可考虑。”（listed/recommended）
+- “甲只适合特定人群。”（通常 caveat）
+- “甲与乙经常被比较。”（comparison）
+
+### 判定优先级
+
+1. 明确否定/排除 → excluded；
+2. 明确条件性弱推荐/降低优先级 → caveat；
+3. 明确推荐/优先 → recommended；
+4. 正常进入候选列表且未否定 → listed；
+5. 仅作参照 → comparison。
+
+“推荐/列入 + 普通短板”不得仅因短板自动降为 caveat。
+
+## 7. ai_mentions.csv
 
 ```text
 mention_id
 answer_id
 entity_id
-mention_rank          # 原文所有实体提及的顺序，resolved/unresolved 都保留
-nomination_rank       # 仅正向且已解析的有效 Nomination 连续编号 1..N
+mention_rank
+nomination_rank
 mentioned_name
 match_method          # explicit-name | verified-alias | citation-only
 resolution_status     # resolved | unresolved
@@ -182,197 +205,100 @@ top3
 first_mention
 entity_correct
 citation_linked
-citation_refs         # 用 | 分隔，必须逐条存在于该 Answer Cell 的 citations
+citation_refs
 concepts
 notes
 ```
 
-原始提及不等于正式 Nomination。正式 Nomination 必须同时满足：
+`mention_rank` = Raw Mention 文本出现顺序；`nomination_rank` = 只在 resolved + entity_correct + recommended/listed 中连续编号。Top3/First Mention 以 nomination_rank 派生。unresolved 仍保留 Raw Mention，但不得进入 Positive Metrics。
 
-1. `match_method` 为 `explicit-name` 或 `verified-alias`；
-2. `resolution_status=resolved`；
-3. `entity_correct=true`；
-4. `mention_intent` 为 `recommended` 或 `listed`。
+## 8. Annotation Blind Recheck 与 Resolution Audit 分离
 
-`comparison / caveat / excluded` 必须留在原始审计，但不进入 Nomination Rate。`Top3` / `First Mention` 以 `nomination_rank` 派生，不再用 raw `mention_rank` 直接计算。
-
-`citation_linked=true` 必须是**实体级关联**：`citation_refs` 至少包含一条该 Answer Cell `citations` 中真实存在的 URL，且采样员已确认该引用指向该主体、其官方域，或足以明确绑定该实体的页面。不能因为“这个回答整体有引用”就把所有 mention 标 true。
-
-`ai_metrics.csv` 另包含：
+Release 模式生成 `annotation_rechecks.csv`：
 
 ```text
-raw_mention_rate
-engine_coverage_rate
-cross_model_consistency
-```
-
-其中：
-- `engine_coverage_rate` = 至少提名过该主体的 AI 引擎数 / 实际采样引擎数；
-- `cross_model_consistency` = 仅在至少 2 个引擎时计算；对“至少一个引擎提到该主体”的 Query，计算这些正向 Query × Engine Answer Cells 中实际提名该主体的比例。它不再等同于“每个引擎至少提过一次”。
-
-### Measurement profile / Answer Context
-
-`answer_context_mode` 必须三选一，并且一个 Run 内不得混用：
-
-- `native`：模型原生、不额外联网/检索增强；
-- `engine-native-search`：由该 AI 产品自身的联网/搜索模式产生回答；
-- `external-search-augmented`：执行者先做外部 Web Search / RAG，再把检索上下文提供给模型。本模式测的是“外部检索增强后的 AI Answer Visibility”，不能包装成模型原生 Recall。
-
-`measurement_profile`：
-
-- `snapshot`：允许每个 query×engine 只采 1 次，用于方法压力测试/单时点快照；
-- `release`：用于正式可发布测量。要求 `repeat_runs_expected >= 3`，每个 query×engine 必须有完整的 `sample_run=1..N`，且 `fresh_context_required=true`；每个 Answer Cell 使用唯一 `context_id`，禁止上下文串扰。
-
-正式发布报告必须同时披露：`sampling_mode`、`answer_context_mode_expected`、`measurement_profile`、`repeat_runs_expected`、采样日期。单引擎或 snapshot 结果不得表述为跨模型稳定排名。
-
-Stage 2 前建议用正式脚本写入这些字段：
-
-```bash
-python3 scripts/configure_measurement.py <run-dir> --engine actual-engine --context-mode native --profile release --repeat-runs 3 --fresh-context
-```
-
-该脚本不替你探测外部服务；执行者必须先真实验证引擎可用，只把实际可访问的引擎传入。
-
-`Top3` 与 `First Mention` 的正式统计以 `nomination_rank` 派生；CSV 中对应布尔字段必须与有效正向提名顺序一致，否则 Validator 报错。
-
-## serp_results.csv
-
-一行就是一个真实 Result Item：
-
-```text
-result_id
-query_id
-engine
-rank
-url
-title
-snippet
-sampled_at
-```
-
-同一 query + engine + rank 只能一行。
-
-## serp_mentions.csv
-
-只允许 title/snippet 的显式提及：
-
-```text
-serp_mention_id
-result_id
-entity_id
-matched_text
-match_surface         # title | snippet | both
-notes
-```
-
-## page_mentions.csv
-
-网页正文内部提及：
-
-```text
-page_mention_id
-result_id
-entity_id
-matched_text
-page_url
-notes
-```
-
-它不能进入 AI Nomination 或 SERP Result Item 计数。正文抓取是可选解释层；本轮若没有执行正文 fetch，允许保留只有表头的空表，但必须在报告/审计中注明“page layer 未采样”，不能把 snippet 推断成正文。
-
-## evidence.csv
-
-```text
-evidence_id
-entity_id
-source_url
-source_title
-source_grade
-source_owner          # owned | independent | platform | unknown
-claim_type
-counting_scope
-notes
-```
-
-## rechecks.csv
-
-```text
-recheck_id
-sample_type           # ai-answer | serp
-source_id
-first_decision
-second_decision
+review_id
+answer_id
+first_positive_set
+second_positive_set
+first_intents
+second_intents
 disagreement
 resolution
-recheck_by
+reviewer
 notes
 ```
 
-## asset_inputs.csv / asset_scores.csv
+第二 Reviewer 可看到原始 Answer、候选 Mention span、canonical entity 以及**冻结的** resolution_status；它只复判 Mention/Intent/正向集合/顺序，不重新猜工商或实体解析状态。
 
-Asset Inputs 维度：
+Entity Resolution 正确性另做 `resolution_rechecks.csv`。不要把 Annotation Agreement 与 Resolution Agreement 混成一个百分比。80% 等一致率目前只能作为 provisional engineering target，不是行业通用理论门槛。
 
-```text
-entity_clarity
-regional_semantic_density
-open_web_assets
-external_authority
-content_depth_freshness
-data_tool_assets
-platform_coverage
-```
-
-`score_assets.py` 派生：asset_readiness / asset_tier / evidence_count / independent_domains / owned_source_dependency。
-
-## concept_ownership.csv
+## 9. ai_emergent_entities.csv
 
 ```text
-concept
 entity_id
 canonical_name
-strength
-evidence_ids
+aliases
+measurement_target   # institution | ip
+market_scope
+operating_region
+resolution_status
+source_answer_ids
+source_result_ids
 notes
 ```
 
-## report_model.json
+AI/SERP 新主体先登记再解析；unresolved 原始提及不得物理删除。
 
-必须有：
+## 10. ai_metrics.csv
 
-- market_universe
-- ai_visibility
-- asset_readiness
-- concept_map
-- observation_group
-- ai_visible_observation
-- ai_emergent_entities
-- ai_visible_emergent
-- appendix
-- kpis
+**一行 = entity_id × measurement_target。** Hybrid `both` 必须有两行。
 
-AI-emergent 主体必须单列，不能自动并入 Stage 1 已确认的全国/本地/IP 主榜。
+核心字段包括：entity_id、canonical_name、measurement_target、answer_cells、raw_mentioned_answers、raw_mention_rate、mentioned_answers、nomination_rate、top3_rate、first_mention_rate、citation_rate、engine_coverage_rate、cross_model_consistency。
 
-## Validator stages
+Institution 分母只由 institution Answer Cells 构成；IP 分母只由 IP Answer Cells 构成。禁止同一主体在报告中无解释地一会儿 `/60`、一会儿 `/24`。
+
+## 11. Variant / Repeat Robustness
+
+官方脚本：
 
 ```bash
-# Stage 1：只校验 Universe，不要求 Measurement / Word
+python3 scripts/compute_variant_robustness.py <run-dir>
+```
+
+产出：
+- `variant_robustness.csv`：entity × target × canonical query 的 0/N、1/N…N/N hit pattern；
+- `query_set_similarity.csv`：variant 两两 Positive Set Jaccard 与 Exact Match；
+- `robustness_summary.json`。
+
+旧“Repeat Stability 12.3%”类指标正式更名为 `positive_persistence_3of3_rate`：仅在至少一次正向命中的 entity × query 中，三个 variant/run 全部正向命中的比例。**它不是 Overall Repeat Stability**，因为 0/3 稳定负例不在分母。
+
+同时必须报告 0/3、1/3、2/3、3/3 分布，以及 Pairwise Positive-set Jaccard / Exact Positive-set Match。若使用 semantic variants，解释为 Query/Retrieval Robustness。
+
+这些指标目前是 descriptive/diagnostic，不进入 GEO 总分；任何 30%/80% 等阈值只可标为 provisional engineering criterion，在多地区/多引擎校准前不得升级为普适理论门槛。
+
+## 12. SERP / Page / AI 分离
+
+`serp_results.csv` 一行一个真实 Result Item；`serp_mentions.csv` 只允许 title/snippet；`page_mentions.csv` 只记录打开网页后的正文提及。
+
+`page_collection_status=not-collected` 时，空 `page_mentions.csv` 表示“未采集”，不表示“0 个正文提及”。Stage 3 Asset Audit 前应补 Page Collection 或显著披露缺口。
+
+## 13. GEO Asset Readiness
+
+Asset Inputs：Entity Clarity / Regional Semantic Density / Open-Web Assets / External Authority / Content Depth & Freshness / Data/Tool Assets / Platform Coverage。它只解释资产基础，不等价于 AI Answer Visibility。
+
+## 14. Validator stages
+
+```bash
 python3 scripts/validate_run.py <run-dir> --stage universe --strict
-
-# Stage 2：Universe 已确认后，校验 AI/SERP/Recheck/Metrics
+python3 scripts/compute_ai_metrics.py <run-dir>
+python3 scripts/compute_variant_robustness.py <run-dir>
 python3 scripts/validate_run.py <run-dir> --stage measurement --strict
-
-# 最终：再校验 report_model + DOCX-only
 python3 scripts/validate_run.py <run-dir> --stage report --strict
 ```
 
-默认不指定 `--stage` 时按 full 执行。
+Release Validator 校验 robustness artifact 是否存在，但在跨地区/跨引擎校准前不把某个经验阈值硬编码为永久 error gate。
 
-## deliverables/
+## 15. deliverables/
 
-v2.2 唯一正式交付：
-
-```text
-deliverables/report.docx
-```
-
-正式目录不得同时生成 report.pdf / report.html。
+v2.2 唯一正式交付：`deliverables/report.docx`。正式目录不得同时生成 report.pdf/report.html。
