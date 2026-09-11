@@ -13,6 +13,7 @@ PROFILES={"snapshot","release"}
 ISOLATION_LEVELS={"api-isolated","product-isolated","programmatic"}
 VARIANT_MODES={"exact-query-repeat","semantic-retrieval-variants"}
 PAGE_COLLECTION={"collected","not-collected","partial"}
+PROGRAMMATIC_DISCLOSURE="程序性 fresh context：使用独立 context_id/执行纪律隔离，但无法证明达到 API 级物理上下文重置，仍存在残余串扰风险。"
 
 def infer_sampling(engines:list[str])->str:
     n=len(engines)
@@ -40,8 +41,7 @@ def configure(run:Path,engines:list[str],context_mode:str,profile:str,repeat_run
         if repeats<1:raise ValueError("snapshot repeat_runs 必须 >=1")
         fresh=False if fresh_context is None else fresh_context
     note=(fresh_context_note or "").strip()
-    if profile=="release" and context_isolation_level=="programmatic" and not note:
-        raise ValueError("programmatic release 必须通过 --fresh-context-note 披露无法物理重置上下文的残余风险")
+    if context_isolation_level=="programmatic" and not note:note=PROGRAMMATIC_DISCLOSURE
     obs=observation_date or date.today().isoformat()
     try:date.fromisoformat(obs)
     except ValueError:raise ValueError("observation_date 必须为 YYYY-MM-DD")
@@ -63,7 +63,7 @@ def main():
     p.add_argument("--context-isolation",choices=sorted(ISOLATION_LEVELS),default="programmatic")
     p.add_argument("--query-variant-mode",choices=sorted(VARIANT_MODES),default="exact-query-repeat")
     p.add_argument("--page-collection-status",choices=sorted(PAGE_COLLECTION),default="not-collected")
-    p.add_argument("--fresh-context-note",default="",help="programmatic release 必填：说明为何无法物理隔离以及残余风险")
+    p.add_argument("--fresh-context-note",default="",help="可覆盖默认披露文本；programmatic 会自动写明非 API 级隔离风险")
     g=p.add_mutually_exclusive_group();g.add_argument("--fresh-context",action="store_true");g.add_argument("--allow-shared-context",action="store_true")
     a=p.parse_args();fresh=True if a.fresh_context else (False if a.allow_shared_context else None)
     try:print(json.dumps(configure(a.run_dir,a.engine,a.context_mode,a.profile,a.repeat_runs,fresh,a.observation_date,a.context_isolation,a.query_variant_mode,a.page_collection_status,a.fresh_context_note),ensure_ascii=False));return 0
