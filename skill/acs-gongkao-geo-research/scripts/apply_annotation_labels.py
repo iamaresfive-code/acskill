@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Build ai_mentions.csv from annotation_tasks.jsonl + reviewed annotation_labels.csv.
 
-The reviewer supplies semantic labels; this script derives nomination_rank/top3/first_mention so
-those fields cannot drift by hand. Frozen resolution_status comes from annotation_tasks.jsonl.
+The reviewer supplies semantic labels only. This script derives nomination_rank/top3/first_mention
+so those fields cannot drift by hand. Frozen resolution_status comes from annotation_tasks.jsonl.
+Citation linkage is deliberately reset here and must be rebuilt independently through
+prepare_citation_audit.py + apply_citation_audit.py.
 """
 from __future__ import annotations
 import argparse,csv,json
@@ -26,7 +28,12 @@ def apply(run:Path):
         if intent not in INTENTS:errors.append(f"{mid}: mention_intent 无效")
         if method not in MATCH:errors.append(f"{mid}: match_method 无效")
         if str(lab.get("entity_correct") or "").strip().lower() not in TRUE|{"false","0","no","n","否"}:errors.append(f"{mid}: entity_correct 必须布尔")
-        rows.append({"mention_id":mid,"answer_id":t.get("answer_id"),"entity_id":t.get("entity_id"),"mention_rank":t.get("mention_rank"),"nomination_rank":"","mentioned_name":t.get("mentioned_name"),"match_method":method,"resolution_status":resolution,"mention_intent":intent,"top3":"false","first_mention":"false","entity_correct":"true" if truth(lab.get("entity_correct")) else "false","citation_linked":"true" if truth(lab.get("citation_linked")) else "false","citation_refs":lab.get("citation_refs","") or "","concepts":lab.get("concepts","") or "","notes":lab.get("notes","") or ""})
+        rows.append({
+            "mention_id":mid,"answer_id":t.get("answer_id"),"entity_id":t.get("entity_id"),"mention_rank":t.get("mention_rank"),"nomination_rank":"",
+            "mentioned_name":t.get("mentioned_name"),"match_method":method,"resolution_status":resolution,"mention_intent":intent,
+            "top3":"false","first_mention":"false","entity_correct":"true" if truth(lab.get("entity_correct")) else "false",
+            "citation_linked":"false","citation_refs":"","concepts":lab.get("concepts","") or "","notes":lab.get("notes","") or ""
+        })
     if errors:raise ValueError("Annotation Labels 未完成：\n- "+"\n- ".join(errors[:50]))
     by_answer=defaultdict(list)
     for r in rows:
@@ -39,6 +46,6 @@ def apply(run:Path):
     return p,len(rows)
 def main():
     p=argparse.ArgumentParser();p.add_argument("run_dir",type=Path);a=p.parse_args()
-    try:path,n=apply(a.run_dir);print(f"{path}: {n} rows");return 0
+    try:path,n=apply(a.run_dir);print(f"{path}: {n} rows; citation linkage reset and requires separate citation audit");return 0
     except (OSError,ValueError,json.JSONDecodeError) as e:print(f"apply_annotation_labels：错误：{e}");return 2
 if __name__=="__main__":raise SystemExit(main())
