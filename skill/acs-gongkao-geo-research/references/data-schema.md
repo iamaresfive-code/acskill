@@ -23,6 +23,8 @@ Target Closure 相关字段：
 
 第二种只能解释为 Query/Retrieval Robustness，不能称严格同条件随机重复。
 
+`run_metadata.json` 属配置/契约/迁移状态层；旧 Run 经 `configure_measurement.py` 更新该文件是允许的。它不属于冻结 Raw Sampling Evidence，不能因为 metadata 可更新就改写 `ai_answers.jsonl`、`mentions_raw.json` 或采样日志。
+
 ## 2. market_universe.csv
 
 ```text
@@ -286,13 +288,13 @@ Release strict validation 要求全部当前风险 mention 被复核且 `review_
 
 AI/SERP 新主体先登记再解析；unresolved 原始提及不得删除。
 
-兼容字段：
+基础字段：
 
 ```text
 entity_id
 canonical_name
 aliases
-measurement_target              # legacy base target: institution | ip
+measurement_target
 market_scope
 operating_region
 resolution_status
@@ -301,15 +303,19 @@ source_result_ids
 notes
 ```
 
-Target Closure 后可增加：
+Target 规则：
+
+- `resolution_status=unresolved`：`measurement_target` 只允许 `institution | ip`，表示发现来源轨道，不进入正式 Metrics；
+- `resolution_status=resolved`：`measurement_target` 允许 `institution | ip | both`，是正式 entity-level measurement target；
+- Target Closure 后可附加：
 
 ```text
-reviewed_measurement_target      # institution | ip | both，正式下游口径
+reviewed_measurement_target      # institution | ip | both；必须与 resolved measurement_target 一致
 measurement_target_review_status # confirmed
 measurement_target_review_source # measurement_target_audit.csv
 ```
 
-对 resolved emergent，Metrics / Robustness / Report 优先使用 `reviewed_measurement_target`。当它为 `both` 时，原 legacy `measurement_target` 保持单一 institution/ip 仅用于旧数据兼容，**不得作为最终测量口径**。
+对 resolved emergent，Metrics / Robustness / Report 使用最终 entity target；当它为 `both` 时，必须在 institution/IP 两个 channel 各产生一条独立轨道。`reviewed_measurement_target` 是审计 provenance，不得与 canonical `measurement_target` 漂移。
 
 ## 11. ai_metrics.csv
 
@@ -317,7 +323,7 @@ measurement_target_review_source # measurement_target_audit.csv
 
 核心字段：Raw Mention Rate、Nomination Rate、Top3 Rate、First Mention Rate、Citation Rate、Engine Coverage Rate、Cross-model Consistency。Institution 与 IP 分母禁止混合。
 
-Release Target Closure Validator 会构造完整 reviewed entity×target 集合，并同时拦截：缺行与多余未授权行。
+Release Target Closure Validator 会构造完整 reviewed entity×target 集合，并同时拦截：缺行与多余未授权行。基础 Measurement Validator 同样按 effective entity target 展开 resolved emergent `both` 并核验 target-specific denominator。
 
 ### 11.1 measurement_qa_summary.json
 
@@ -327,7 +333,7 @@ Release Target Closure Validator 会构造完整 reviewed entity×target 集合�
 python3 scripts/build_measurement_qa_summary.py <run-dir>
 ```
 
-其中 `mention_intent_distribution`、`metrics_target_distribution` 等直接从最终持久化产物计算，用于避免 QA 修正后报告数字仍停留在修正前版本。
+其中 `mention_intent_distribution`、`metrics_target_distribution` 等直接从最终持久化产物计算，用于避免 QA 修正后报告数字仍停留在修正前版本。Report Validator 会再次对账 `report_model.json` / `measurement_qa_summary.json` 与最终 `ai_mentions.csv` / `ai_metrics.csv`。
 
 ## 12. Variant / Repeat Robustness
 
@@ -339,7 +345,9 @@ python3 scripts/compute_variant_robustness.py <run-dir>
 
 `positive_persistence_3of3_rate` 只表示“至少一次正向命中的 entity×query 中，三个 variant/run 全部正向命中的比例”，**不是 Overall Repeat Stability**。同时必须报告 0/N、1/N…N/N Hit Pattern、Pairwise Positive-set Jaccard、Exact Set Match。
 
-若使用 semantic variants，必须披露 variant evidence status；legacy-reconstructed 不得包装成原生记录。Reviewed AI-emergent `both` 必须在 institution/IP 两个 target 上分别进入 robustness 计算。
+若使用 semantic variants，必须披露 variant evidence status；legacy-reconstructed 不得包装成原生记录。Resolved AI-emergent `both` 必须在 institution/IP 两个 target 上分别进入 robustness 计算。
+
+`snapshot` profile 不强制存在 Robustness artifacts；`release` 强制存在。但任何 profile 只要主动运行 robustness，就必须提供原生或 sidecar `query_variant_id`，不得由代码暗中构造 variant fallback。
 
 ## 13. SERP / Page / AI 分离
 
@@ -371,7 +379,7 @@ Target Closure 聚焦回归：
 python3 scripts/test_stage24.py
 ```
 
-覆盖 resolved emergent `both`、双 target Metrics、Target Closure gate、short-name Resolution Recheck、最终 QA summary。
+`test_v22.py` 会调用该聚焦回归。覆盖 resolved emergent `both`、双 target Metrics 与双分母、Robustness 双轴、unresolved emergent 不进 metrics、未审 Target release gate、Target Audit Universe+emergent coverage、Resolution Audit gate、substring suspicion、Report/QA 最终 Intent counts、snapshot robustness policy。
 
 ## 16. deliverables/
 
