@@ -3,6 +3,7 @@ from __future__ import annotations
 import zipfile
 from pathlib import Path
 from validation_common import *
+from measurement_target_utils import effective_emergent_target
 
 def validate_report(run:Path,issues:list[Issue],universe:list[dict],metrics:list[dict],emergent:list[dict]):
     model=rjson(run/"report_model.json",issues,"report-model")
@@ -23,14 +24,17 @@ def validate_report(run:Path,issues:list[Issue],universe:list[dict],metrics:list
     for group in (model.get("market_universe",{}) or {}).values():
         if not isinstance(group,list):continue
         for r in group:
-            declared=r.get("measurement_target")
-            tm=r.get("target_metrics") or {}
+            declared=r.get("measurement_target");tm=r.get("target_metrics") or {}
             if declared=="both" and set(tm)!={"institution","ip"}:issues.append(Issue("error","report-hybrid-target-loss",f"{r.get('canonical_name')} measurement_target=both 但报告未保留 institution/ip 两套 target_metrics"))
-    resolved_emergent={r.get("entity_id") for r in emergent if r.get("resolution_status")=="resolved"};rendered_emergent={r.get("entity_id") for r in (model.get("ai_visible_emergent") or [])}
+    resolved_emergent={r.get("entity_id") for r in emergent if r.get("resolution_status")=="resolved"};rendered_rows=(model.get("ai_emergent_entities") or []);rendered_by={r.get("entity_id"):r for r in rendered_rows};rendered_emergent={r.get("entity_id") for r in (model.get("ai_visible_emergent") or [])}
     visible_resolved={eid for eid in resolved_emergent if any(k[0]==eid and num((next((x for x in metrics if x.get('entity_id')==eid and x.get('measurement_target')==k[1]),{}) or {}).get("nomination_rate")) and num((next((x for x in metrics if x.get('entity_id')==eid and x.get('measurement_target')==k[1]),{}) or {}).get("nomination_rate"))>0 for k in metric_keys)}
     if visible_resolved-rendered_emergent:issues.append(Issue("error","emergent-dropped",f"Report Model 丢失 AI-emergent 主体：{', '.join(sorted(visible_resolved-rendered_emergent))}"))
+    for e in emergent:
+        if e.get("resolution_status")!="resolved" or effective_emergent_target(e)!="both":continue
+        rr=rendered_by.get(e.get("entity_id")) or {};tm=rr.get("target_metrics") or {}
+        if set(tm)!={"institution","ip"}:issues.append(Issue("error","report-emergent-hybrid-target-loss",f"{e.get('canonical_name')} reviewed_measurement_target=both 但报告未保留 institution/ip 两套 target_metrics"))
     app=model.get("appendix") or {}
-    for key in ("recheck","research_assets","methodology_notes"):
+    for key in ("recheck","resolution_recheck","annotation_intent_distribution","research_assets","methodology_notes"):
         if key not in app:issues.append(Issue("error","appendix-contract",f"report_model.appendix 缺少 {key}"))
     delivered=run/"deliverables";docx=delivered/"report.docx"
     if not docx.is_file():issues.append(Issue("error","missing-docx","缺少唯一正式交付物 deliverables/report.docx"))
