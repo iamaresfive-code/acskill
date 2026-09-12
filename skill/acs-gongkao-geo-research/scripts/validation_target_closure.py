@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Release-only Target Closure and Resolution Audit validation."""
+"""Release-only Target Closure and targeted Entity Resolution validation."""
 from __future__ import annotations
 from pathlib import Path
 from validation_common import Issue,rcsv,rjsonl,truth
@@ -10,13 +10,15 @@ RREQ={"review_id","mention_id","answer_id","entity_id","canonical_name","mention
 AREQ={"entity_id","canonical_name","entity_source","resolution_status","stage1_market_role","market_bucket","entity_type","current_explicit_target","candidate_target","institution_evidence","ip_evidence","hybrid_signal","hybrid_signal_basis","cross_target_ai_signal","new_explicit_target","evidence_basis","reviewer_reason","changed","review_status","notes"}
 
 
+def _bool_text(v):return "true" if truth(v) else "false"
+
 def validate_target_closure(run:Path,meta:dict,issues:list[Issue],universe:list,metrics:list,emergent:list):
     if meta.get("measurement_profile")!="release":return
     if meta.get("measurement_target_reviewed") is not True:issues.append(Issue("error","target-closure-not-reviewed","release Measurement 必须完成 Measurement Target Audit"))
     if meta.get("resolved_emergent_target_reviewed") is not True:issues.append(Issue("error","emergent-target-closure-not-reviewed","release Measurement 必须审定全部 resolved AI-emergent Target"))
 
     audit,_=rcsv(run/"measurement_target_audit.csv",issues,"measurement-target-audit",AREQ)
-    aby={};
+    aby={}
     for a in audit:
         eid=(a.get("entity_id") or "").strip()
         if not eid or eid in aby:issues.append(Issue("error","target-audit-id",f"measurement_target_audit entity_id 重复/为空：{eid}"));continue
@@ -56,15 +58,18 @@ def validate_target_closure(run:Path,meta:dict,issues:list[Issue],universe:list,
     if missing:issues.append(Issue("error","target-closure-metric-missing",f"reviewed Target 缺 Metrics 行：{sorted(missing)[:30]}"))
     if extra_metrics:issues.append(Issue("error","target-closure-metric-extra",f"Metrics 含未被 reviewed Target 授权的 entity×target：{sorted(extra_metrics)[:30]}"))
 
-    # Targeted Entity Resolution audit, separate from semantic annotation review.
+    # Targeted Entity Resolution audit, separate from semantic Annotation Review.
     mentions,_=rcsv(run/"ai_mentions.csv",issues,"ai-mentions-resolution-audit")
     answers=rjsonl(run/"ai_answers.jsonl",issues,"ai-answers-resolution-audit");amap={a.get("answer_id"):a for a in answers};emergent_ids={e.get("entity_id") for e in emergent}
     risky={}
     for m in mentions:
         a=amap.get(m.get("answer_id"),{});flags=risk_flags(m,a.get("response_text","") or "",emergent_ids)
         if flags:risky[m.get("mention_id")]=(m,flags)
-    rr,_=rcsv(run/"resolution_rechecks.csv",issues,"resolution-rechecks",RREQ)
-    rby={}
+    rp=run/"resolution_rechecks.csv"
+    if risky and not rp.is_file():
+        issues.append(Issue("error","missing-resolution-rechecks",f"release Run 有 {len(risky)} 条高风险 Entity Resolution mention，必须运行 prepare_resolution_rechecks.py 并完成复核"));return
+    if not rp.is_file():return
+    rr,_=rcsv(rp,issues,"resolution-rechecks",RREQ);rby={}
     for r in rr:
         mid=(r.get("mention_id") or "").strip()
         if not mid or mid in rby:issues.append(Issue("error","resolution-recheck-id",f"resolution_rechecks mention_id 重复/为空：{mid}"));continue
@@ -77,15 +82,20 @@ def validate_target_closure(run:Path,meta:dict,issues:list[Issue],universe:list,
         r=rby.get(mid)
         if not r:continue
         if r.get("answer_id")!=m.get("answer_id") or r.get("entity_id")!=m.get("entity_id"):issues.append(Issue("error","resolution-recheck-identity",f"{mid}: recheck answer/entity 与 ai_mentions 不一致"));continue
+        recorded_flags={x for x in (r.get("risk_flags") or "").split("|") if x}
+        if recorded_flags!=set(flags):issues.append(Issue("error","resolution-recheck-risk-drift",f"{mid}: risk_flags 与当前规则不一致；重新生成 resolution_rechecks.csv"))
         if r.get("review_status")!="confirmed":issues.append(Issue("error","resolution-recheck-unreviewed",f"{mid}: review_status 必须 confirmed"))
-        rrstatus=(r.get("reviewer_resolution_status") or "").strip().lower();rcorrect=(r.get("reviewer_entity_correct") or "").strip().lower()
+        first_status=(r.get("first_resolution_status") or "").strip().lower();first_correct=_bool_text(r.get("first_entity_correct"));rrstatus=(r.get("reviewer_resolution_status") or "").strip().lower();rcorrect=(r.get("reviewer_entity_correct") or "").strip().lower()
         if rrstatus not in {"resolved","unresolved"}:issues.append(Issue("error","resolution-recheck-status",f"{mid}: reviewer_resolution_status 必须 resolved/unresolved"))
         if rcorrect not in {"true","false"}:issues.append(Issue("error","resolution-recheck-entity-correct",f"{mid}: reviewer_entity_correct 必须 true/false"))
-        differs=(rrstatus!=(m.get("resolution_status") or "").lower()) or (rcorrect!=("true" if truth(m.get("entity_correct")) else "false"))
-        if truth(r.get("disagreement"))!=differs:issues.append(Issue("error","resolution-recheck-disagreement",f"{mid}: disagreement 与 reviewer/current 差异不一致"))
+        reviewer_differs_first=(rrstatus!=first_status) or (rcorrect!=first_correct)
+        if truth(r.get("disagreement"))!=reviewer_differs_first:issues.append(Issue("error","resolution-recheck-disagreement",f"{mid}: disagreement 必须表示 Reviewer 与 first decision 是否不同"))
+        current_matches_reviewer=(rrstatus==(m.get("resolution_status") or "").lower()) and (rcorrect==_bool_text(m.get("entity_correct")))
         outcome=(r.get("resolution_outcome") or "").strip()
         if outcome not in {"confirmed-existing","corrected-in-run","requires-upstream-fix"}:issues.append(Issue("error","resolution-recheck-outcome",f"{mid}: resolution_outcome 无效"))
+        if outcome=="confirmed-existing" and reviewer_differs_first:issues.append(Issue("error","resolution-recheck-outcome-mismatch",f"{mid}: Reviewer 与 first decision 不同，不能标 confirmed-existing"))
+        if outcome=="corrected-in-run" and (not reviewer_differs_first or not current_matches_reviewer):issues.append(Issue("error","resolution-recheck-correction-mismatch",f"{mid}: corrected-in-run 必须同时满足 Reviewer 改判且当前 ai_mentions 已同步"))
         if outcome=="requires-upstream-fix":issues.append(Issue("error","resolution-recheck-upstream-fix",f"{mid}: Entity Resolution 尚需上游修复：{r.get('resolution','')}"))
-        if differs and outcome!="requires-upstream-fix":issues.append(Issue("error","resolution-recheck-not-applied",f"{mid}: reviewer 结论与当前 ai_mentions 不一致；先修正上游/ai_mentions 后再确认"))
+        if not current_matches_reviewer and outcome!="requires-upstream-fix":issues.append(Issue("error","resolution-recheck-not-applied",f"{mid}: Reviewer 结论与当前 ai_mentions 不一致；先修正上游/当前 Run 后再确认"))
         if not str(r.get("reviewer") or "").strip():issues.append(Issue("error","resolution-recheck-reviewer",f"{mid}: reviewer 不能为空"))
         if not str(r.get("resolution") or "").strip():issues.append(Issue("error","resolution-recheck-reason",f"{mid}: resolution 必须记录判断依据"))
