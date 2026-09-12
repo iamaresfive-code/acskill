@@ -33,13 +33,17 @@ def fixture(r:Path):
     (r/"mentions_raw.json").write_text(json.dumps(raw,ensure_ascii=False),encoding="utf-8")
     mf=["mention_id","answer_id","entity_id","mention_rank","nomination_rank","mentioned_name","match_method","resolution_status","mention_intent","top3","first_mention","entity_correct","citation_linked","citation_refs","concepts","notes"]
     wcsv(r/"ai_mentions.csv",mf,[{"mention_id":"AM1","answer_id":"A-M1","entity_id":"X1","mention_rank":"1","nomination_rank":"1","mentioned_name":"新星品牌","match_method":"explicit-name","resolution_status":"resolved","mention_intent":"recommended","top3":"true","first_mention":"true","entity_correct":"true","citation_linked":"false","citation_refs":"","concepts":"","notes":""},{"mention_id":"AM2","answer_id":"A-P1","entity_id":"X1","mention_rank":"1","nomination_rank":"1","mentioned_name":"新星老师","match_method":"verified-alias","resolution_status":"resolved","mention_intent":"listed","top3":"true","first_mention":"true","entity_correct":"true","citation_linked":"false","citation_refs":"","concepts":"","notes":""},{"mention_id":"AM3","answer_id":"A-M1","entity_id":"I1","mention_rank":"2","nomination_rank":"","mentioned_name":"中公","match_method":"explicit-name","resolution_status":"resolved","mention_intent":"comparison","top3":"false","first_mention":"false","entity_correct":"false","citation_linked":"false","citation_refs":"","concepts":"","notes":"substring false positive"}])
+    # Simulate a Stage 2.3 legacy audit that already confirmed the Universe row but did not include emergents/entity_source.
+    legacy_fields=["entity_id","canonical_name","new_explicit_target","evidence_basis","reviewer_reason","review_status"]
+    wcsv(r/"measurement_target_audit.csv",legacy_fields,[{"entity_id":"I1","canonical_name":"中公","new_explicit_target":"institution","evidence_basis":"prior Stage2.3 Universe review","reviewer_reason":"reviewed","review_status":"confirmed"}])
 
 def main():
     with tempfile.TemporaryDirectory() as td:
         r=Path(td);fixture(r)
-        _,summary=prepare_targets(r);assert summary["universe_rows"]==1 and summary["resolved_emergent_rows"]==1
-        audit=rcsv(r/"measurement_target_audit.csv")
+        _,summary=prepare_targets(r);assert summary["universe_rows"]==1 and summary["resolved_emergent_rows"]==1 and summary["preserved_confirmed_rows"]==1 and summary["needs_review_rows"]==1
+        audit=rcsv(r/"measurement_target_audit.csv");i1=next(a for a in audit if a["entity_id"]=="I1");assert i1["review_status"]=="confirmed" and i1["entity_source"]=="universe"
         for a in audit:
+            if a["review_status"]=="confirmed":continue
             a["new_explicit_target"]="both" if a["entity_id"]=="X1" else "institution";a["evidence_basis"]="synthetic reviewed evidence";a["reviewer_reason"]="cross-target brand + teacher entry" if a["hybrid_signal"]=="true" else "reviewed";a["review_status"]="confirmed"
         wcsv(r/"measurement_target_audit.csv",list(audit[0]),audit);applied=apply_targets(r);assert applied["resolved_emergent_rows"]==1 and applied["emergent_both"]==1
         x=rcsv(r/"ai_emergent_entities.csv")[0];assert x["measurement_target"]=="institution" and x["reviewed_measurement_target"]=="both"
