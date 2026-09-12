@@ -186,12 +186,49 @@ Release Validator 检查 target-specific denominator、variant raw/sidecar、con
 
 单引擎、外部检索增强、semantic variants、programmatic context、legacy-reconstructed variant 都必须显著披露。数据低稳定时禁止写“真实第一”“所有 AI 都不认识”“GEO 为零”。
 
+### Report Layer 流程
+
+```bash
+# 1) 报告层公开证据（只补 Asset / Concept / Analysis，不回写 Universe、不回写 AI-emergent）
+#    → report_research_manifest.csv（来源分级 + URL 独立核验 + content hash）
+# 2) 资产评分与概念绑定
+python3 scripts/score_assets.py <run-dir>          # → asset_scores.csv
+# 3) 分析五层（facts / metrics / proxies / inferences / recommendations）→ analysis.json
+# 4) 报告模型 → DOCX
+python3 scripts/generate_charts.py <run-dir>
+python3 scripts/build_report_model.py <run-dir>
+python3 scripts/generate_report_docx.py <run-dir>
+# 5) 收口
+python3 scripts/validate_run.py <run-dir> --stage report --strict
+python3 scripts/qa_report_docx.py <run-dir>        # 实际打开 DOCX 做质量检查
+```
+
+Report Layer 三条硬约束：
+
+1. **没有证据 ≠ 0 分**：未取到证据的维度写 `unknown` 并登记进 `unknown_fields`，不计入分母；
+2. **评分必须能从公开证据复算**：只有 URL 经独立核验可达的证据参与计分，不可核验行整行丢弃；
+3. **空壳报告不得通过**：`asset_scores` / `concept_ownership` / `analysis.json` 为空、
+   `diagnoses` / `strategy` / `plan_90_days` / `risks` 为空、DOCX 核心章节只有标题无正文，
+   都会被 report strict 阻断；渲染器本身在关键结构为空时直接抛错退出。
+
+Report Entity Identity 与 Measurement Target 是不同维度：`both` 主体只产生一行资产记录。
+
 ## 12. 测试纪律
 
 ```bash
 python3 -m py_compile scripts/*.py
 python3 scripts/test_v22.py
 ```
+
+`test_v22.py` 会串起核心回归、Stage 2.4 Target Closure 聚焦回归与 Report Layer 聚焦回归
+（`scripts/test_report_layer.py`）。后者必须同时覆盖：
+
+1. **负向**：Measurement 完整、Report Layer 为空的 Run → `--stage report --strict` 必须非 0，
+   且必须命中 `empty-asset-readiness` / `empty-concept-ownership` / `empty-analysis` /
+   `empty-report-section` / `missing-report-docx`；同时该 Run 的 Measurement 层仍须完整，
+   以证明是 Report Gate 在独立拦截；
+2. **正向**：Report Layer 完整 fixture → 0 errors / 0 warnings / exit 0；
+3. **DOCX 空壳章节**：结构完整但某一级章节正文为空 → 必须 FAIL。
 
 仅真正缺少 matplotlib/python-docx 等第三方依赖时，DOCX/图表集成测试允许明确 SKIP。AssertionError、Validator failure、RuntimeError 必须 FAIL / 非0退出；禁止宽泛 `except Exception` 吞掉真实失败。
 

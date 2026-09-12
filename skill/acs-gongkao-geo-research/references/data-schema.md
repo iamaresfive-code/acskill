@@ -379,6 +379,18 @@ python3 scripts/build_measurement_qa_summary.py <run-dir>
 python3 scripts/validate_run.py <run-dir> --stage measurement --strict
 ```
 
+Report 层收口：
+
+```bash
+python3 scripts/score_assets.py <run-dir>
+python3 scripts/generate_charts.py <run-dir>
+python3 scripts/build_report_model.py <run-dir>
+python3 scripts/generate_report_docx.py <run-dir>
+python3 scripts/validate_run.py <run-dir> --stage report --strict
+python3 scripts/qa_report_docx.py <run-dir>
+python3 scripts/test_v22.py
+```
+
 Release Validator 检查：target-specific denominator、effective query variant、sidecar identity/evidence、context isolation、Annotation Recheck、Citation Audit、Robustness artifacts、**Universe + resolved emergent Target Closure**、以及**高风险 Entity Resolution Recheck**。
 
 任何 30%/80% 等经验阈值在多地区/多引擎校准前只可作为 diagnostic，不作为永久理论 gate。
@@ -398,3 +410,202 @@ python3 scripts/test_stage24.py
 ## 16. deliverables/
 
 v2.2 唯一正式交付：`deliverables/report.docx`。正式目录不得同时生成 report.pdf/report.html。
+
+## 17. Report Layer 数据契约
+
+Report Layer 是独立于 Measurement 的一层，回答「为什么机器可能认识这个主体」。完整链路：
+
+```text
+report_research_manifest.csv   （本轮新增公开网页证据，唯一证据源）
+   ↓
+asset_inputs.csv               （7 维资产评分 + 证据引用 + unknown 声明）
+   ↓
+asset_scores.csv               （加权资产成熟度 + Tier + 证据统计）
+   ↓
+concept_ownership.csv          （概念绑定：绑定类型 + 强度 + 来源 + 依据）
+   ↓
+analysis.json                  （事实/指标/代理指标/推断/建议 五层分离）
+   ↓
+report_model.json              （build_report_model.py 从最终持久化产物构建）
+   ↓
+deliverables/report.docx       （generate_report_docx.py 唯一渲染器）
+```
+
+**Report Entity Identity 与 Measurement Target 是不同维度。** Report Layer 的主体集合 =
+`market_universe.csv` 中 `universe_status=included` 的主体 ∪ `ai_emergent_entities.csv` 中
+`resolution_status=resolved` 的主体。`measurement_target=both` 的主体只产生**一行**资产记录，
+不得因为同时具有 institution / ip 两条 Measurement 轨道而拆成两个品牌资产主体。
+每个正式主体必须有明确状态——可以整行都是 unknown，但不得因为资料不足而静默丢行。
+
+Report Layer 工作**不得回写** Market Universe，也不得把报告研究过程中新发现的实体
+静默并入当前 Metrics / Universe；只能作为 report-layer observation 记录。
+
+### 17.1 report_research_manifest.csv
+
+本轮新增公开网页证据的唯一存储位置。**不得混入历史 AI Sampling Raw Evidence**
+（`ai_answers.jsonl` / `mentions_raw.json` / `queries.csv` / `serp_results.csv` / `sampling_logs/*`）。
+
+```text
+evidence_id           # RR0001 形式，Run 内唯一
+entity_id
+entity_name
+field                 # identity | official_website | official_social_account | regional_content
+                      # | course_or_tool_asset | recent_content | contact_or_conversion
+                      # | authoritative_reference | third_party_mention | concept_binding
+source_url            # 真实检索结果或已打开页面地址；不得凭记忆拼写
+source_title
+source_grade          # A1 政府/高校/监管 | A2 第一方官网或官方账号 | B 稳定实名平台 | C 营销榜单/聚合
+source_owner          # owned | third-party
+platform              # official-site | wechat-mp | douyin | xiaohongshu | bilibili | zhihu
+                      # | baijiahao | sohu | news-media | gov-edu | job-board | aggregator | other
+domain
+region_relevant       # true | false | unknown
+recency_months        # 页面真实可见的发布时间距今月数；看不到日期必须留空，不得猜
+content_type          # homepage | course-page | article | profile | directory | news | video | qa | job | other
+access_status         # found | blocked | indexed-only | ambiguous | not-found
+url_http_status       # 独立核验得到的 HTTP 状态码或错误码
+url_content_hash      # 抓取正文 SHA256 前 16 位（快照元数据）
+observed_at           # ISO 日期
+concept / binding_type / strength / basis / source_type   # 仅 field=concept_binding 时填写
+notes
+```
+
+**计分门槛**：只有 `source_url` 非空且独立核验可达（HTTP 2xx，或被反爬拒绝但地址真实存在的
+403/468/502）的证据行才参与 Asset / Concept 计分。404、域名不可达、重定向环等**不可核验**
+证据行必须整行丢弃，不得计入任何分数；无 URL 的主张保留在 manifest 中作为发现记录，
+`access_status` 记为 `indexed-only`，**不参与计分**。
+
+## 18. Asset Readiness 评分口径
+
+`asset_inputs.csv`：
+
+```text
+entity_id
+canonical_name
+entity_clarity                  # 0-25 或 unknown
+regional_semantic_density       # 0-20 或 unknown
+open_web_assets                 # 0-15 或 unknown
+external_authority              # 0-15 或 unknown
+content_depth_freshness         # 0-10 或 unknown
+data_tool_assets                # 0-10 或 unknown
+platform_coverage               # 0-5  或 unknown
+evidence_refs                   # 竖线分隔的 manifest evidence_id
+evidence_date
+confidence                      # high | medium | low
+unknown_fields                  # 竖线分隔的无证据维度名
+notes
+```
+
+`asset_scores.csv` = asset_inputs + 计算结果：`asset_readiness`、`asset_tier`、
+`asset_readiness_basis_weight`、`evidence_count`、`independent_domains`、`owned_source_dependency`。
+
+### 18.1 核心原则：没有证据 ≠ 0 分
+
+未取到证据的维度必须写 **`unknown`**（等价写作 `not-observed` / `insufficient-evidence`），
+并同时登记进 `unknown_fields`：
+
+- unknown 维度**不计入分母**；
+- `asset_readiness = round(100 × 已证据化维度得分 / 已证据化维度满分, 2)`；
+- `asset_readiness_basis_weight` = 已证据化维度的满分之和；
+- 已证据化权重 < 50/100 时 Tier 记 **U（证据不足）**，不得据此判断主体「没有资产」；
+- 完全未取到证据时 `asset_readiness` 留空、Tier 留空，**绝不写 0**。
+
+**不得把「本次没有搜到」解释为「主体一定没有」。**
+
+### 18.2 固定换算表（可由 manifest 复算）
+
+| 维度 | 满分 | 判定 |
+|---|---|---|
+| entity_clarity | 25 | 第一方官网或官方账号可达=25；第一方地址存在但抓取被拒=18；仅有第三方可核验描述=10；无=unknown |
+| regional_semantic_density | 20 | `region_relevant=true` 的可核验证据行 ≥3=20；=2=15；=1=8；=0=unknown |
+| open_web_assets | 15 | 独立域名 ≥6=15；4-5=12；2-3=8；1=4；0=unknown |
+| external_authority | 15 | 第三方 A1 ≥2=15；A1=1=11；B≥2=7；B=1=4；仅 C=2；无=unknown |
+| content_depth_freshness | 10 | `recency_months≤12` 的证据行 ≥3=10；1-2=7；无带日期证据=unknown |
+| data_tool_assets | 10 | course_or_tool_asset / course-page / video 类证据 ≥3=10；1-2=6；0=unknown |
+| platform_coverage | 5 | 出现平台 ≥3=5；=2=3；=1=2；0=unknown |
+
+Tier：≥85 S；≥75 A；≥65 B+；≥55 B；≥45 B-；否则 C；已证据化权重 <50 记 U。
+
+## 19. Concept Ownership 绑定分级
+
+```text
+concept
+entity_id
+canonical_name
+strength            # 1-10，必须落在 binding_type 对应区间
+binding_type        # owned-declaration | high-frequency-public-binding
+                    # | third-party-description | single-incidental-mention
+basis               # 具体依据：该页面/账号如何把概念与主体绑定
+source_url
+source_type         # official-site | official-account | media | third-party-platform
+observed_at
+evidence_ids
+notes
+```
+
+强度区间（强制）：`owned-declaration` 8-10；`high-frequency-public-binding` 6-8；
+`third-party-description` 3-5；`single-incidental-mention` 1-2。
+
+概念绑定只能来自**可核验的公开内容绑定**：不得因为品牌名、行业常识或 Reviewer 印象自动赋权。
+**单次第三方提及不得包装成强 Concept Ownership。**
+
+## 20. analysis.json 五层分离
+
+```json
+{
+  "schema_version": "2.2",
+  "generated_from": { "...": "各最终产物行数" },
+  "executive_summary": [],
+  "facts": [], "metrics": [], "proxies": [], "inferences": [], "recommendations": [],
+  "diagnoses": [], "strategy": [], "plan_90_days": [], "limitations": []
+}
+```
+
+约束：
+
+- `facts` / `metrics` / `proxies` / `inferences` / `recommendations` 五层**不得缺层**；
+- 每层条目必须是 `{statement, basis}` 对象，两者都不得为空；
+- `metrics` 条目还必须声明 `metric` 名称，且只能取自 `ai_metrics.csv` 的指标列、
+  robustness 指标或资产维度名；
+- **禁止把 GEO Visibility 指标写成真实市场份额或市场排名**；名词口径必须落在
+  “本次协议下的可见度”；
+- 统计数字必须由脚本从最终持久化产物实算，**不得手抄中间统计**。
+
+## 21. Report Layer Validator 门禁
+
+`validate_run.py <run-dir> --stage report --strict` 必须阻断空壳报告。以下错误码为强制项：
+
+| 错误码 | 触发条件 |
+|---|---|
+| `empty-asset-readiness` | `asset_scores.csv` 缺失/只有表头/无有效数值，或 `report_model.asset_readiness` 为空 |
+| `empty-concept-ownership` | `concept_ownership.csv` 缺失或无有效 Concept 数据，或 `report_model.concept_map` 为空 |
+| `empty-analysis` | `analysis.json` 缺失，或 `executive_summary` / 五层 / `limitations` 为空，或条目缺 `statement`/`basis` |
+| `empty-report-section` | `report_model` 的 `diagnoses` / `strategy` / `plan_90_days` / `risks` / `measurement_protocol` / `robustness` 为空，或 DOCX 缺核心章节、章节只有标题无正文 |
+| `missing-report-docx` | `deliverables/report.docx` 不存在或无法作为 DOCX 打开 |
+| `missing-report-chart` | `report_model.charts` 指向的图表文件不存在 |
+| `asset-readiness-coverage` | asset_scores 未覆盖全部正式主体 |
+| `asset-readiness-duplicate-entity` | 同一主体在 asset_scores 出现多行（both 不得拆成两个资产主体） |
+| `asset-readiness-no-evidence` | 某维度有分数但没有任何 `evidence_refs`，评分无法从公开证据复算 |
+| `asset-readiness-untraceable` | `evidence_refs` 指向 manifest 中不存在的证据 |
+| `asset-readiness-unknown-mismatch` | 维度取值与 `unknown_fields` 声明不一致（缺证据却未声明 unknown） |
+| `concept-ownership-untraceable` | 概念绑定缺 `source_url` / `basis` / `observed_at` / `binding_type` 等可核验字段 |
+| `concept-strength-overstated` | `strength` 超出 `binding_type` 对应区间 |
+| `placeholder-text` | DOCX 仍包含占位文案 |
+
+**DOCX 核心章节门禁**：Validator 直接解析 `word/document.xml`，要求 15 个一级章节
+（见 `generate_report_docx.py` 的 `REQUIRED_DOCX_SECTIONS`）全部存在，且每章标题之后
+至少有一个非空正文段落、数据表格或图片；只有标题无正文即 FAIL。
+
+渲染器本身也必须拒绝输出空壳：`generate_report_docx.py` 的 `_assert_complete()` 在关键
+结构为空时直接抛错退出（exit 2），不再用占位文案兜底。
+
+## 22. Report Layer 合成回归
+
+`scripts/test_report_layer.py`（由 `scripts/test_v22.py` 调用）必须同时覆盖：
+
+1. **负向**：Measurement 完整、Report Layer 为空的 Run →
+   `validate_run.py --stage report --strict` **必须非 0**，且必须出现
+   `empty-asset-readiness` / `empty-concept-ownership` / `empty-analysis` /
+   `empty-report-section` / `missing-report-docx`；
+2. **正向**：Report Layer 完整 fixture → **0 errors / 0 warnings / exit 0**；
+3. **DOCX 章节空壳**：报告结构完整但某一级章节正文为空 → 必须 FAIL。

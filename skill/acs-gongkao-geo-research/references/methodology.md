@@ -142,3 +142,43 @@ A1 政府/高校/监管；A2 第一方官网/官方账号；B 稳定实名平台
 ## 15. Release Gate
 
 Release Gate 关注**协议完整性与可审计性**：target、variant、context、annotation、citation、robustness、recheck、denominator 是否完整。30%/80% 等经验阈值在广东/天津/山东和多引擎数据校准前只作为 diagnostic，不硬编码成普适理论门槛。
+
+## 16. GEO Asset Readiness：没有证据 ≠ 0 分
+
+Asset Readiness 解释的是「公开资产是否让机器容易识别、理解、确认和引用该主体」，它**不是**教学质量、通过率、招生量、市场份额或口碑指标，也不能替代 AI Answer Visibility。
+
+七个维度（entity_clarity 25 / regional_semantic_density 20 / open_web_assets 15 / external_authority 15 / content_depth_freshness 10 / data_tool_assets 10 / platform_coverage 5）**只由可核验的公开证据算分**，换算表见 `data-schema.md` 第 18.2 节。
+
+两条不可让步的纪律：
+
+1. **没有找到证据 ≠ 0 分。** 未取到证据的维度写 `unknown` 并登记进 `unknown_fields`，不计入分母；已证据化权重不足时 Tier 记 U（证据不足）。把「本次没搜到」写成「主体一定没有」是本层最严重的口径错误。
+2. **评分必须能从原始公开证据复算。** 每个数值维度都要能追到 `report_research_manifest.csv` 的具体证据行；只有 URL 经独立核验可达（HTTP 2xx，或被反爬拒绝但地址真实存在的 403/468/502）的证据才参与计分；404、域名不可达等不可核验行整行丢弃。
+
+同时必须区分**可核验证据**与**未核验主张**：无 URL 的发现记录可以保留，但 `access_status` 只能记 `indexed-only`，且不参与任何计分。
+
+## 17. Concept Ownership：只能来自可核验的公开内容绑定
+
+概念绑定回答「哪个主体在公开内容中与哪个概念形成了可复核的关联」。它不得来自品牌名、行业常识、Reviewer 印象或 AI 回答中的共现。
+
+每条绑定必须区分绑定类型，并遵守对应强度区间：
+
+| binding_type | 含义 | strength |
+|---|---|---|
+| owned-declaration | 品牌在自有官网/官方账号主动宣称的定位与业务 | 8–10 |
+| high-frequency-public-binding | 多个独立公开页面高频把该概念与主体绑定 | 6–8 |
+| third-party-description | 第三方页面描述其专注于某概念 | 3–5 |
+| single-incidental-mention | 仅在单次提及中出现 | 1–2 |
+
+**单次第三方提及不得包装成强 Concept Ownership。**
+
+## 18. Report Layer 的五层表述纪律
+
+`analysis.json` 必须把事实、指标、代理指标、推断、建议分开记录，并且：
+
+- GEO Visibility 指标只能表述为「本次协议下的可见度」，**禁止写成真实市场份额或市场排名**；
+- Asset Readiness 是公开资产代理，Concept Ownership 是内容绑定代理，两者都不构成市场地位判断；
+- 所有统计数字必须由脚本从最终持久化产物实算，不得手抄中间统计，避免 QA 修正后报告仍停留在旧版本。
+
+## 19. Report Layer 门禁纪律
+
+报告层必须与 Measurement 层同等对待：**空壳报告不得通过 strict**。`validate_run.py --stage report --strict` 必须对空 `asset_scores` / `concept_ownership` / `analysis.json`、空的 `diagnoses` / `strategy` / `plan_90_days` / `risks`、缺失或正文为空的核心章节、缺失的图表引用全部报错；渲染器本身在关键结构为空时必须直接失败退出，不得用占位文案兜底。
