@@ -5,7 +5,7 @@ import argparse,json
 from dataclasses import asdict
 from pathlib import Path
 from validation_common import *
-from validation_universe import validate_universe
+from validation_universe_v221 import validate_universe
 from validation_measurement import validate_measurement
 from validation_target_closure import validate_target_closure
 from validation_report_customer import validate_report
