@@ -5,7 +5,8 @@ Rules:
 - Customer charts are Chinese-first. Missing CJK font is a hard error.
 - Charts communicate decisions, not internal enums or developer diagnostics.
 - Missing evidence is omitted from score rankings rather than rendered as zero.
-- Institution-recommendation and teacher-recommendation measurements are not mixed into one scatter plot.
+- Institution-recommendation and teacher-recommendation measurements are not mixed into one baseline.
+- One real-world subject is shown at most once in the opportunity chart.
 """
 from __future__ import annotations
 import argparse,csv,json,statistics
@@ -51,31 +52,34 @@ def _bar_labels(ax,bars,values,suffix="%",extras=None):
 def _opportunity_rows(metrics,assets):
     """Select readable opportunity subjects without creating a synthetic composite score.
 
-    Opportunity = has an asset score, asset score at/above the scored-sample median, and AI
-    nomination rate below the median of its own measurement group. Institution and teacher
-    groups therefore keep separate baselines.
+    Institution and teacher measurements use separate nomination-rate medians. For a dual-target
+    subject, keep only the target where its nomination rate falls furthest below that target's
+    median, so the same real-world subject is never plotted twice.
     """
     asset_by={r.get("entity_id"):r for r in assets}
     rows=[]
     for r in metrics:
-        score=fnum((asset_by.get(r.get("entity_id")) or {}).get("asset_readiness"))
-        rate=fnum(r.get("nomination_rate"))
-        if score is None or rate is None:continue
-        rows.append({
-            "entity_id":r.get("entity_id"),
-            "name":r.get("canonical_name") or (asset_by.get(r.get("entity_id")) or {}).get("canonical_name") or r.get("entity_id"),
-            "target":r.get("measurement_target"),
-            "asset":score,
-            "rate":rate*100,
-        })
+        eid=r.get("entity_id");score=fnum((asset_by.get(eid) or {}).get("asset_readiness"));rate=fnum(r.get("nomination_rate"))
+        if not eid or score is None or rate is None:continue
+        rows.append({"entity_id":eid,"name":r.get("canonical_name") or (asset_by.get(eid) or {}).get("canonical_name") or eid,
+                     "target":r.get("measurement_target"),"asset":score,"rate":rate*100})
     if not rows:return [],0.0,{}
-    asset_median=statistics.median([x["asset"] for x in rows])
+    unique_asset={x["entity_id"]:x["asset"] for x in rows}
+    asset_median=statistics.median(list(unique_asset.values()))
     target_medians={}
     for target in {x["target"] for x in rows}:
         vals=[x["rate"] for x in rows if x["target"]==target]
         if vals:target_medians[target]=statistics.median(vals)
-    selected=[x for x in rows if x["asset"]>=asset_median and x["rate"]<target_medians.get(x["target"],0)]
-    selected=sorted(selected,key=lambda x:(-x["asset"],x["rate"],x["name"]))[:8]
+    candidates=[]
+    for x in rows:
+        baseline=target_medians.get(x["target"])
+        if baseline is None or x["asset"]<asset_median or x["rate"]>=baseline:continue
+        y=dict(x);y["visibility_gap"]=baseline-x["rate"];candidates.append(y)
+    best={}
+    for x in candidates:
+        old=best.get(x["entity_id"])
+        if old is None or x["visibility_gap"]>old["visibility_gap"]:best[x["entity_id"]]=x
+    selected=sorted(best.values(),key=lambda x:(-x["asset"],-x["visibility_gap"],x["name"]))[:8]
     return selected,asset_median,target_medians
 
 
@@ -88,21 +92,17 @@ def generate(run:Path):
     out=ensure_directory(run/"charts")
     metrics=rcsv(run/"ai_metrics.csv");assets=rcsv(run/"asset_scores.csv");concepts=rcsv(run/"concept_ownership.csv");files=[]
 
-    # 1) 重点优化机会：替代难读且混合两类分母的散点图。
     opportunity,asset_median,target_medians=_opportunity_rows(metrics,assets)
     fig,ax=plt.subplots(figsize=(6.8,max(3.6,0.55*max(len(opportunity),4)+1.7)),dpi=180)
     if opportunity:
-        labels=[x["name"] for x in opportunity]
-        y=list(range(len(opportunity)))
-        assets_v=[x["asset"] for x in opportunity];rates=[x["rate"] for x in opportunity]
-        h=0.34
+        labels=[x["name"] for x in opportunity];y=list(range(len(opportunity)))
+        assets_v=[x["asset"] for x in opportunity];rates=[x["rate"] for x in opportunity];h=0.34
         bars1=ax.barh([i+h/2 for i in y],assets_v,height=h,label="GEO 资产基础得分")
         bars2=ax.barh([i-h/2 for i in y],rates,height=h,label="AI 提名率（%）")
         ax.set_yticks(y,labels);ax.invert_yaxis();ax.set_xlim(0,105)
         for bars,vals in ((bars1,assets_v),(bars2,rates)):
             for b,v in zip(bars,vals):ax.text(b.get_width()+1,b.get_y()+b.get_height()/2,f"{v:.1f}",va="center",fontsize=8)
-        ax.legend(loc="lower right",fontsize=8)
-        ax.set_xlabel("0–100（两项指标分别解读，不相加为总分）")
+        ax.legend(loc="lower right",fontsize=8);ax.set_xlabel("0–100（两项指标分别解读，不相加为总分）")
         ax.set_title("重点优化机会：资产基础较强，但 AI 可见度仍偏低")
     else:
         ax.axis("off");ax.text(.5,.55,"本轮没有识别出明显的“资产较强、AI 可见度偏低”主体",ha="center",va="center",fontsize=12)
@@ -125,21 +125,18 @@ def generate(run:Path):
     teacher=[r for r in metrics if r.get("measurement_target")=="ip" and r.get("market_role")=="expert-ip"]
     visibility(teacher,"ai-visibility-ip.png","老师 / 个人品牌 AI 提名率")
 
-    # 5) GEO 资产基础：明确只展示前 15 名，避免标题暗示覆盖全部可评分主体。
     scored=[]
     for r in assets:
         score=fnum(r.get("asset_readiness"))
         if score is not None:scored.append((r,score))
     scored=sorted(scored,key=lambda x:x[1],reverse=True)[:15]
     if scored:
-        labels=[r.get("canonical_name") or r.get("institution") or r.get("entity_id") for r,_ in scored]
-        values=[s for _,s in scored];extras=[f" / {r.get('asset_tier')}" if r.get("asset_tier") else "" for r,_ in scored]
+        labels=[r.get("canonical_name") or r.get("institution") or r.get("entity_id") for r,_ in scored];values=[s for _,s in scored]
         fig,ax=plt.subplots(figsize=(6.8,max(3.2,0.35*len(scored)+1.5)),dpi=180)
-        bars=ax.barh(list(reversed(labels)),list(reversed(values)));_bar_labels(ax,bars,list(reversed(values)),suffix="",extras=list(reversed(extras)))
+        bars=ax.barh(list(reversed(labels)),list(reversed(values)));_bar_labels(ax,bars,list(reversed(values)),suffix="")
         ax.set_xlim(0,112);ax.set_xlabel("GEO 资产基础得分（100分制）");ax.set_title("GEO 资产基础排名（前 15 名）")
         p=out/"asset-readiness.png";_save(fig,plt,p);files.append(p.name)
 
-    # 6) 概念占位：Top 10 直接列出主体和概念，避免稀疏热力图。
     ranked=[]
     for r in concepts:
         strength=fnum(r.get("strength") or r.get("score"));entity=r.get("canonical_name") or r.get("entity_name") or "";concept=r.get("concept") or ""
@@ -152,11 +149,9 @@ def generate(run:Path):
         ax.set_xlim(0,max(10.8,max(values)*1.15 if values else 10.8));ax.set_xlabel("概念绑定强度（10分制）");ax.set_title("概念占位前 10 名")
         p=out/"concept-ownership.png";_save(fig,plt,p);files.append(p.name)
 
-    payload={
-        "files":files,"cjk_font_available":True,"cjk_font":cjk_font,"customer_chart_language":"zh-CN",
-        "generated_from":{"ai_metrics":len(metrics),"asset_scores":len(assets),"concept_rows":len(concepts),"opportunity_entities":len(opportunity)},
-        "opportunity_rule":{"asset_median":asset_median,"target_nomination_medians":target_medians,"note":"机构推荐类与老师推荐类分别使用各自提名率中位数，不跨题型比较分母。"},
-    }
+    payload={"files":files,"cjk_font_available":True,"cjk_font":cjk_font,"customer_chart_language":"zh-CN",
+             "generated_from":{"ai_metrics":len(metrics),"asset_scores":len(assets),"concept_rows":len(concepts),"opportunity_entities":len(opportunity)},
+             "opportunity_rule":{"asset_median":asset_median,"target_nomination_medians":target_medians,"note":"机构推荐类与老师推荐类分别使用各自提名率中位数，不跨题型比较分母；双入口主体最多展示一次。"}}
     (out/"chart_manifest.json").write_text(json.dumps(payload,ensure_ascii=False,indent=2)+"\n",encoding="utf-8");return payload
 
 
