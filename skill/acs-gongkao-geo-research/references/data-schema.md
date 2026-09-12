@@ -10,6 +10,13 @@
 
 核心字段：requested_region / normalized_region / research_scope、seed_entities、allow_discovery_supplement、research_mode、market_universe_confirmed、measurement_allowed、sampling_mode、ai_engines_expected、ai_engine_access_checked、observation_date、measurement_profile、answer_context_mode_expected、repeat_runs_expected、fresh_context_required、context_isolation_level、query_variant_mode、page_collection_status、fresh_context_note。
 
+Target Closure 相关字段：
+- `measurement_target_reviewed`
+- `measurement_target_review_source`
+- `resolved_emergent_target_reviewed`
+- `resolved_emergent_target_review_count`
+- `resolved_emergent_both_count`
+
 `query_variant_mode` 只允许：
 - `exact-query-repeat`
 - `semantic-retrieval-variants`
@@ -48,7 +55,7 @@ Market Bucket 与 Measurement Target 是两条独立轴。`measurement_target` �
 
 ### 2.1 measurement_target_audit.csv
 
-对旧 Run 或任何需要复核的 Universe，先运行：
+对旧 Run、Hybrid/IP-led Brand、以及 resolved AI-emergent 主体统一运行：
 
 ```bash
 python3 scripts/prepare_measurement_target_audit.py <run-dir>
@@ -59,6 +66,8 @@ python3 scripts/prepare_measurement_target_audit.py <run-dir>
 ```text
 entity_id
 canonical_name
+entity_source          # universe | ai-emergent
+resolution_status
 stage1_market_role
 market_bucket
 entity_type
@@ -77,11 +86,15 @@ review_status
 notes
 ```
 
-`hybrid_signal` 只是强制 Reviewer 注意 IP-led Brand / 工作室 / 品牌+老师入口，不会自动赋值 `both`。若 `hybrid_signal=true`，应用前必须填写 `reviewer_reason`，说明为什么最终选择 institution/ip/both。
+Target Audit 必须覆盖：
+- Market Universe 全体主体；
+- `ai_emergent_entities.csv` 中全部 `resolution_status=resolved` 主体。
+
+`hybrid_signal` 只是强制 Reviewer 注意 IP-led Brand / 工作室 / 品牌+老师入口 / 跨 target Raw Mention，不会自动赋值 `both`。若 `hybrid_signal=true`，应用前必须填写 `reviewer_reason`，说明为什么最终选择 institution/ip/both。
 
 ## 3. universe_review.json
 
-A/B/C/D 四桶必须互斥且覆盖全部 Universe；distribution 应包含 measurement_target。补 target 不得改变已确认 Market Bucket。
+A/B/C/D 四桶必须互斥且覆盖全部 Universe；distribution 应包含 measurement_target。补 target 不得改变已确认 Market Bucket。AI-emergent 不回写 Stage 1 Market Bucket。
 
 ## 4. queries.csv
 
@@ -144,7 +157,7 @@ notes
 
 原 Answer 有字段时标 `native-recorded`；历史缺字段时按 `sample_run + query_variant_mode` 做迁移侧写并标 `legacy-reconstructed`。后者只是可审计迁移元数据，不代表当时逐 Cell 已记录真实变体搜索词。
 
-`validation_measurement.py` 与 `compute_variant_robustness.py` 优先读 raw Answer 的原生字段，缺失时读 sidecar；两者冲突直接报错。禁止静默 `run-{sample_run}` fallback。
+Validator 与 `compute_variant_robustness.py` 优先读 raw Answer 的原生字段，缺失时读 sidecar；两者冲突直接报错。禁止静默 `run-{sample_run}` fallback。
 
 ## 6. mention_intent 五分类锚定
 
@@ -163,7 +176,7 @@ notes
 - “只有基础很强时才考虑甲，否则不优先。” → caveat。
 - “甲不属于广东，本条不展开。” → excluded。
 
-## 7. ai_mentions.csv
+## 7. ai_mentions.csv 与 Annotation Tasks
 
 ```text
 mention_id
@@ -187,6 +200,15 @@ notes
 `mention_rank` 是 Raw Mention 顺序；`nomination_rank` 只在 explicit-name/verified-alias + resolved + entity_correct + recommended/listed 中连续编号。Top3/First Mention 从 nomination_rank 派生。
 
 **Intent Annotation 不负责 Citation。** `apply_annotation_labels.py` 会把 citation 字段重置为空/false，随后必须走独立 Citation Audit。
+
+`prepare_annotation_tasks.py` 对两字以内中文短名若与前后中文字符相连，会附：
+
+```text
+substring_suspicion=true
+substring_suspicion_reason=...
+```
+
+这只是 Reviewer 风险提醒，不自动改变 `entity_correct`。例如「检索中公职……」中抽出的「中公」应进入人工复核，避免子串误匹配被算成正式提名。
 
 ## 8. Citation Audit：与 Intent Annotation 分链
 
@@ -223,19 +245,89 @@ notes
 - 没有实体级链接时也必须写 `link_basis`；
 - Release Run 只要 Answer Cells 含 citations，就必须有完整 `citation_audit.csv` 和 `citation_audit_summary.json`，并同步回 `ai_mentions.csv`。
 
-## 9. Annotation Blind Recheck 与 Resolution Audit
+## 9. Annotation Blind Recheck 与 Entity Resolution Recheck
 
-Release 使用 `annotation_rechecks.csv` 复核 Mention/Intent/Positive Set/顺序；Entity Resolution 另做 `resolution_rechecks.csv`。第二 Reviewer 可见冻结的 canonical mapping/resolution_status，但不重新猜实体解析。
+Release 使用 `annotation_rechecks.csv` 复核 Mention/Intent/Positive Set/顺序；Entity Resolution 另做 `resolution_rechecks.csv`，两者不得混算。
+
+生成高风险 Resolution Recheck：
+
+```bash
+python3 scripts/prepare_resolution_rechecks.py <run-dir>
+```
+
+风险选择包括：AI-emergent、unresolved、verified-alias、citation-only、short-name-boundary。
+
+`resolution_rechecks.csv` 字段：
+
+```text
+review_id
+mention_id
+answer_id
+entity_id
+canonical_name
+mentioned_name
+match_method
+risk_flags
+first_resolution_status
+first_entity_correct
+reviewer_resolution_status
+reviewer_entity_correct
+disagreement
+resolution_outcome     # confirmed-existing | corrected-in-run | requires-upstream-fix
+resolution
+reviewer
+review_status
+notes
+```
+
+Release strict validation 要求全部当前风险 mention 被复核且 `review_status=confirmed`。如果 Reviewer 结论与当前 `ai_mentions.csv` 不一致，必须先修正当前 Run/上游映射再通过；不能只在审计表中记录“应该改”。`requires-upstream-fix` 会阻断 Release。
 
 ## 10. ai_emergent_entities.csv
 
-AI/SERP 新主体先登记再解析；unresolved 原始提及不得删除。Query/emergent target 仍只使用 institution/ip。
+AI/SERP 新主体先登记再解析；unresolved 原始提及不得删除。
+
+兼容字段：
+
+```text
+entity_id
+canonical_name
+aliases
+measurement_target              # legacy base target: institution | ip
+market_scope
+operating_region
+resolution_status
+source_answer_ids
+source_result_ids
+notes
+```
+
+Target Closure 后可增加：
+
+```text
+reviewed_measurement_target      # institution | ip | both，正式下游口径
+measurement_target_review_status # confirmed
+measurement_target_review_source # measurement_target_audit.csv
+```
+
+对 resolved emergent，Metrics / Robustness / Report 优先使用 `reviewed_measurement_target`。当它为 `both` 时，原 legacy `measurement_target` 保持单一 institution/ip 仅用于旧数据兼容，**不得作为最终测量口径**。
 
 ## 11. ai_metrics.csv
 
-**一行 = entity_id × measurement_target。** Hybrid `both` 必须两行。
+**一行 = entity_id × measurement_target。** Universe 与 resolved AI-emergent 的 Hybrid `both` 都必须两行。
 
 核心字段：Raw Mention Rate、Nomination Rate、Top3 Rate、First Mention Rate、Citation Rate、Engine Coverage Rate、Cross-model Consistency。Institution 与 IP 分母禁止混合。
+
+Release Target Closure Validator 会构造完整 reviewed entity×target 集合，并同时拦截：缺行与多余未授权行。
+
+### 11.1 measurement_qa_summary.json
+
+诊断/交接报告不要手抄中间统计。最终 Annotation / Target / Citation / Robustness 落盘后运行：
+
+```bash
+python3 scripts/build_measurement_qa_summary.py <run-dir>
+```
+
+其中 `mention_intent_distribution`、`metrics_target_distribution` 等直接从最终持久化产物计算，用于避免 QA 修正后报告数字仍停留在修正前版本。
 
 ## 12. Variant / Repeat Robustness
 
@@ -247,7 +339,7 @@ python3 scripts/compute_variant_robustness.py <run-dir>
 
 `positive_persistence_3of3_rate` 只表示“至少一次正向命中的 entity×query 中，三个 variant/run 全部正向命中的比例”，**不是 Overall Repeat Stability**。同时必须报告 0/N、1/N…N/N Hit Pattern、Pairwise Positive-set Jaccard、Exact Set Match。
 
-若使用 semantic variants，必须披露 variant evidence status；legacy-reconstructed 不得包装成原生记录。
+若使用 semantic variants，必须披露 variant evidence status；legacy-reconstructed 不得包装成原生记录。Reviewed AI-emergent `both` 必须在 institution/IP 两个 target 上分别进入 robustness 计算。
 
 ## 13. SERP / Page / AI 分离
 
@@ -261,16 +353,25 @@ python3 scripts/compute_variant_robustness.py <run-dir>
 python3 scripts/validate_run.py <run-dir> --stage universe --strict
 python3 scripts/compute_ai_metrics.py <run-dir>
 python3 scripts/compute_variant_robustness.py <run-dir>
+python3 scripts/build_measurement_qa_summary.py <run-dir>
 python3 scripts/validate_run.py <run-dir> --stage measurement --strict
 ```
 
-Release Validator 检查：target-specific denominator、effective query variant、sidecar identity/evidence、context isolation、Annotation Recheck、robustness artifacts，以及 Answer 有 citations 时的独立 Citation Audit 完整性。
+Release Validator 检查：target-specific denominator、effective query variant、sidecar identity/evidence、context isolation、Annotation Recheck、Citation Audit、Robustness artifacts、**Universe + resolved emergent Target Closure**、以及**高风险 Entity Resolution Recheck**。
 
 任何 30%/80% 等经验阈值在多地区/多引擎校准前只可作为 diagnostic，不作为永久理论 gate。
 
 ## 15. 测试纪律
 
 `test_v22.py` 只有第三方依赖确实缺失时才允许 DOCX/图表集成测试 SKIP。AssertionError、Validator failure、RuntimeError 等必须让测试失败并返回非 0；禁止宽泛捕获后伪装成 SKIP。
+
+Target Closure 聚焦回归：
+
+```bash
+python3 scripts/test_stage24.py
+```
+
+覆盖 resolved emergent `both`、双 target Metrics、Target Closure gate、short-name Resolution Recheck、最终 QA summary。
 
 ## 16. deliverables/
 
