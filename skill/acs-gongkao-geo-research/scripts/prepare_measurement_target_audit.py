@@ -4,6 +4,11 @@
 The helper never decides institution/ip/both. It surfaces organization evidence, personal/IP
 evidence and cross-target raw AI mentions so reviewers do not silently miss IP-led brands.
 `hybrid_signal` forces attention only; it never auto-assigns `both`.
+
+If a prior audit already contains a fully confirmed Universe decision, that reviewed decision may be
+carried forward while evidence/signals are recomputed. This lets Stage 2.4 close only newly added
+resolved-emergent rows instead of forcing a needless second review of the 61 Stage 2.3 Universe rows.
+Legacy audit rows without `entity_source` are eligible for carry-forward only for Universe entities.
 """
 from __future__ import annotations
 import argparse,csv,json,re
@@ -11,6 +16,7 @@ from collections import defaultdict,Counter
 from pathlib import Path
 
 FIELDS=["entity_id","canonical_name","entity_source","resolution_status","stage1_market_role","market_bucket","entity_type","current_explicit_target","candidate_target","institution_evidence","ip_evidence","hybrid_signal","hybrid_signal_basis","cross_target_ai_signal","new_explicit_target","evidence_basis","reviewer_reason","changed","review_status","notes"]
+VALID={"institution","ip","both"}
 PERSON_MARKERS=re.compile(r"老师|师姐|师兄|学长|学姐|主播|主讲|创始人|领衔|个人\s*IP|IP-led",re.I)
 ORG_MARKERS=re.compile(r"公司|机构|教育|工作室|培训|课程店铺|线下|小班|教研|品牌",re.I)
 IP_MARKERS=re.compile(r"老师|师姐|师兄|主播|主讲|创始人|领衔|IP-led|个人\s*IP|抖音|B站|播客",re.I)
@@ -58,7 +64,20 @@ def make_row(r:dict,source:str,raw_counts:dict):
         "new_explicit_target":current,"evidence_basis":"","reviewer_reason":"","changed":"false","review_status":"needs-review",
         "notes":"hybrid_signal only forces review; it never auto-assigns both. For AI-emergent rows, reviewed target becomes authoritative downstream while the legacy registry target is retained for compatibility."
     }
+def _carry_forward(row:dict,old:dict|None)->bool:
+    if not old or (old.get("review_status") or "").strip()!="confirmed":return False
+    source=(row.get("entity_source") or "").strip();old_source=(old.get("entity_source") or "").strip()
+    if source=="ai-emergent" and old_source!="ai-emergent":return False
+    if source=="universe" and old_source not in {"","universe"}:return False
+    t=(old.get("new_explicit_target") or "").strip();basis=(old.get("evidence_basis") or "").strip();reason=(old.get("reviewer_reason") or "").strip()
+    if t not in VALID or not basis:return False
+    # Newly recomputed hybrid signal still requires an explicit reason. Do not silently preserve an old decision without one.
+    if row.get("hybrid_signal")=="true" and not reason:return False
+    row["new_explicit_target"]=t;row["candidate_target"]=t;row["evidence_basis"]=basis;row["reviewer_reason"]=reason;row["review_status"]="confirmed";row["changed"]="true" if t!=(row.get("current_explicit_target") or "").strip() else "false"
+    row["notes"]=(row.get("notes") or "")+" | prior confirmed decision carried forward; current signals recomputed"
+    return True
 def prepare(run:Path):
+    p=run/"measurement_target_audit.csv";prior=rcsv(p) if p.is_file() else [];prior_by={r.get("entity_id"):r for r in prior if (r.get("entity_id") or "").strip()}
     universe=rcsv(run/"market_universe.csv");emergent=rcsv(run/"ai_emergent_entities.csv")
     raw_path=run/"mentions_raw.json";raw=json.loads(raw_path.read_text(encoding="utf-8")) if raw_path.is_file() else []
     raw_counts=defaultdict(Counter)
@@ -70,13 +89,13 @@ def prepare(run:Path):
     out.extend(make_row(r,"ai-emergent",raw_counts) for r in resolved)
     ids=[r["entity_id"] for r in out]
     if len(ids)!=len(set(ids)):raise ValueError("Universe 与 resolved emergent 出现重复 entity_id")
-    p=run/"measurement_target_audit.csv"
+    preserved=sum(_carry_forward(r,prior_by.get(r.get("entity_id"))) for r in out)
     with p.open("w",encoding="utf-8-sig",newline="") as f:w=csv.DictWriter(f,fieldnames=FIELDS);w.writeheader();w.writerows(out)
-    summary={"audit_rows":len(out),"universe_rows":len(universe),"resolved_emergent_rows":len(resolved),"hybrid_review_signals":sum(r["hybrid_signal"]=="true" for r in out)}
+    summary={"audit_rows":len(out),"universe_rows":len(universe),"resolved_emergent_rows":len(resolved),"hybrid_review_signals":sum(r["hybrid_signal"]=="true" for r in out),"preserved_confirmed_rows":preserved,"needs_review_rows":sum(r["review_status"]!="confirmed" for r in out)}
     (run/"measurement_target_audit_prepare_summary.json").write_text(json.dumps(summary,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
     return p,summary
 def main():
     p=argparse.ArgumentParser();p.add_argument("run_dir",type=Path);a=p.parse_args()
-    try:path,s=prepare(a.run_dir);print(f"{path}: {s['audit_rows']} rows = universe {s['universe_rows']} + resolved emergent {s['resolved_emergent_rows']}; hybrid signals={s['hybrid_review_signals']}");return 0
+    try:path,s=prepare(a.run_dir);print(f"{path}: {s['audit_rows']} rows = universe {s['universe_rows']} + resolved emergent {s['resolved_emergent_rows']}; preserved={s['preserved_confirmed_rows']}; needs-review={s['needs_review_rows']}; hybrid signals={s['hybrid_review_signals']}");return 0
     except (OSError,ValueError,json.JSONDecodeError) as e:print(f"prepare_measurement_target_audit：错误：{e}");return 2
 if __name__=="__main__":raise SystemExit(main())
