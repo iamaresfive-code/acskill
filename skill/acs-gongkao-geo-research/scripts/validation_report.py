@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import zipfile
+import json,zipfile
+from collections import Counter
 from pathlib import Path
 from validation_common import *
 from measurement_target_utils import effective_emergent_target
@@ -32,8 +33,25 @@ def validate_report(run:Path,issues:list[Issue],universe:list[dict],metrics:list
     for e in emergent:
         if e.get("resolution_status")!="resolved" or effective_emergent_target(e)!="both":continue
         rr=rendered_by.get(e.get("entity_id")) or {};tm=rr.get("target_metrics") or {}
-        if set(tm)!={"institution","ip"}:issues.append(Issue("error","report-emergent-hybrid-target-loss",f"{e.get('canonical_name')} reviewed_measurement_target=both 但报告未保留 institution/ip 两套 target_metrics"))
-    app=model.get("appendix") or {}
+        if set(tm)!={"institution","ip"}:issues.append(Issue("error","report-emergent-hybrid-target-loss",f"{e.get('canonical_name')} measurement_target=both 但报告未保留 institution/ip 两套 target_metrics"))
+
+    # Final-data consistency: report counts must be derived from the final persisted annotation and
+    # metrics files, never copied from a pre-QA intermediate report.
+    mentions,_=rcsv(run/"ai_mentions.csv",issues,"ai-mentions-report-consistency")
+    final_intents=dict(sorted(Counter((m.get("mention_intent") or "").strip() for m in mentions if (m.get("mention_intent") or "").strip()).items()))
+    model_qa=model.get("measurement_qa") or {};app=model.get("appendix") or {}
+    if model_qa.get("annotation_intent_distribution")!=final_intents:issues.append(Issue("error","report-intent-count-drift","report_model.measurement_qa.annotation_intent_distribution 与最终 ai_mentions.csv 不一致"))
+    if app.get("annotation_intent_distribution")!=final_intents:issues.append(Issue("error","report-appendix-intent-count-drift","report_model.appendix.annotation_intent_distribution 与最终 ai_mentions.csv 不一致"))
+    qap=run/"measurement_qa_summary.json"
+    if qap.is_file():
+        try:qa=json.loads(qap.read_text(encoding="utf-8"))
+        except Exception as e:issues.append(Issue("error","measurement-qa-summary-invalid",f"measurement_qa_summary.json 无效：{e}"));qa={}
+        if qa:
+            if qa.get("mention_intent_distribution")!=final_intents:issues.append(Issue("error","qa-summary-intent-count-drift","measurement_qa_summary.json 与最终 ai_mentions.csv 不一致；重新运行 build_measurement_qa_summary.py"))
+            if intnum(qa.get("metrics_rows"))!=len(metrics):issues.append(Issue("error","qa-summary-metric-count-drift","measurement_qa_summary.metrics_rows 与最终 ai_metrics.csv 不一致"))
+            target_dist=dict(sorted(Counter((m.get("measurement_target") or "").strip() for m in metrics if (m.get("measurement_target") or "").strip()).items()))
+            if qa.get("metrics_target_distribution")!=target_dist:issues.append(Issue("error","qa-summary-target-count-drift","measurement_qa_summary.metrics_target_distribution 与最终 ai_metrics.csv 不一致"))
+
     for key in ("recheck","resolution_recheck","annotation_intent_distribution","research_assets","methodology_notes"):
         if key not in app:issues.append(Issue("error","appendix-contract",f"report_model.appendix 缺少 {key}"))
     delivered=run/"deliverables";docx=delivered/"report.docx"
