@@ -53,12 +53,19 @@ def main():
     for t in d.tables:
         for r in t.rows:text+="\n"+" | ".join(c.text for c in r.cells)
 
-    # Customer-language contract is shared with strict validation.
     customer_issues=[];vrc.check_customer_docx(run,customer_issues)
     chk("客户版中文化 / 无工程字段泄漏",not customer_issues,"; ".join(f"{x.code}:{x.message}" for x in customer_issues) or "PASS")
     chk("不展示工程审计章节","Research Audit" not in text and "报告层数据来源" not in text and "研究资产清单" not in text)
     chk("重点主体诊断包含优先动作","优先动作" in text)
-    chk("资产不足明确写暂不评分","暂不评分" in text)
+
+    unscored=[]
+    for x in model.get("asset_readiness") or []:
+        try:float(x.get("asset_readiness"))
+        except:unscored.append(x)
+    if unscored:
+        chk("证据不足主体明确写暂不评分","暂不评分" in text,f"unscored={len(unscored)}")
+    else:
+        chk("证据不足主体明确写暂不评分",True,"本轮所有报告主体均有可评分资产证据，无需出现“暂不评分”")
 
     answers=[];apath=run/"ai_answers.jsonl"
     if apath.is_file():
