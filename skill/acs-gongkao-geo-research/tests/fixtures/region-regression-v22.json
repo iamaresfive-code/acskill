@@ -1,7 +1,0 @@
-{
-  "cases": [
-    {"region":"广东省","expected_mode":"scoped-geo-landscape","notes":"本土机构/IP活跃，必须先 Seed + Universe Confirmation"},
-    {"region":"天津市","expected_mode":"scoped-geo-landscape","notes":"检查别名/机构关系与用户 Seed 不消失"},
-    {"region":"山东省","expected_mode":"scoped-geo-landscape","notes":"防止广东/天津专用逻辑进入生产规则"}
-  ]
-}

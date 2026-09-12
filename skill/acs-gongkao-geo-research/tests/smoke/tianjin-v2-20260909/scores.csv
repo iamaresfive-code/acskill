@@ -1,4 +1,0 @@
-institution,entity_id,inclusion_basis,query_coverage,entity_clarity,external_diversity,concept_ownership,freshness,total,tier,evidence_confidence,generic_hits,generic_queries,brand_hits,evidence_count,independent_domains,notes
-北宋教育,I002,discovered,4,20,15,10,8,57,B,High,0,2,1,3,3,通用两轮未自然召回；定向验收补测后确认主体
-津仕教育,I001,discovered,4,18,14,8,9,53,B,High,0,2,1,2,1,两个页面同属天津商业大学域名，独立域名去重为一
-津极公考,I003,discovered,4,14,2,8,9,37,C,Medium,0,2,1,1,0,主要依赖官网自述

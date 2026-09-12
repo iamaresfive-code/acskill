@@ -1,4 +1,0 @@
-candidate_id,entity_id,display_name,candidate_type,discovery_round,discovery_channel,discovery_query_id,discovery_result_id,first_seen_at,evidence_strength,status,merged_into_entity_id,exclusion_reason,notes
-C001,I003,津极公考,brand,1,user-query,QD05,R001,2026-09-09T03:04:00+08:00,medium,scored,,,通用本土小机构问题自然发现
-C002,I001,津仕教育,institution,2,institutional,QD08,R002,2026-09-09T03:07:00+08:00,high,scored,,,高校招聘页自然发现
-C003,I002,北宋教育,institution,2,entity-alias,QD10,R003,2026-09-09T03:09:00+08:00,high,scored,,,通用两轮未召回；验收定向补测发现并映射北学优仕

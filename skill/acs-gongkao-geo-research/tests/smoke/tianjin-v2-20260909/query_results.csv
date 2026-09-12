@@ -1,9 +1,0 @@
-result_id,query_id,entity_id,result_rank,source_url,source_title,matched_name,observed_at,channel,matched,counts_as_measurement_hit,notes
-R001,QD05,I003,2,https://www.jjgk022.com/,津极公考教育,津极公考,2026-09-09T03:04:00+08:00,public-web,true,false,Discovery结果
-R002,QD08,I001,5,https://career.tjcu.edu.cn/correcruit/content/id/12390.html,申论助教-津仕培训学校（天津）有限公司,津仕培训学校（天津）有限公司,2026-09-09T03:07:00+08:00,public-web,true,false,自然发现
-R003,QD10,I002,1,https://career.hebut.edu.cn/company/index/id/17987.html,企业主页-天津北学优仕培训学校有限公司,北宋教育,2026-09-09T03:09:00+08:00,public-web,true,false,验收定向补测发现；不算自然召回
-R004,QM01,,,https://kaoshilink.com/articles/tianjin-gongkao-jigou-duibi-2026,天津公考机构怎么选,未命中三家测试主体,2026-09-09T03:10:00+08:00,public-web,false,false,
-R005,QM02,,,https://www.jiaoyubao.cn/baike/21885.html,天津公考培训六家机构盘点,未命中三家测试主体,2026-09-09T03:11:00+08:00,public-web,false,false,
-R006,QV01,I001,1,https://career.tjcu.edu.cn/company/index/id/6666.html,企业主页-津仕培训学校（天津）有限公司,津仕教育,2026-09-09T03:12:00+08:00,public-web,true,false,
-R007,QV02,I002,1,https://career.hebut.edu.cn/company/index/id/17987.html,企业主页-天津北学优仕培训学校有限公司,北宋教育,2026-09-09T03:13:00+08:00,public-web,true,false,
-R008,QV03,I003,1,https://www.jjgk022.com/,津极公考教育,津极公考,2026-09-09T03:14:00+08:00,public-web,true,false,
