@@ -4,11 +4,14 @@
 The core keeps the mature v2.2 validation surface. This wrapper closes the resolved AI-emergent
 entity-target contract: resolved emergents may canonically be institution/ip/both; both expands to
 two metric channels. Unresolved emergents remain single-target and never enter formal metrics.
+
+It also enforces release-only completeness gates that must distinguish a present-but-empty audit
+CSV from a completed audit. Header-only citation/annotation audit files are never release evidence.
 """
 from __future__ import annotations
-import csv
+import csv,json
 from pathlib import Path
-from validation_common import Issue,VALID_QUERY_TARGETS
+from validation_common import Issue,VALID_QUERY_TARGETS,citation_urls
 from measurement_target_utils import VALID_ENTITY_TARGETS,expanded_target,effective_emergent_target
 from validation_measurement_core import validate_measurement as _validate_core
 
@@ -16,6 +19,15 @@ from validation_measurement_core import validate_measurement as _validate_core
 def _read(path:Path):
     if not path.is_file():return []
     with path.open("r",encoding="utf-8-sig",newline="") as f:return list(csv.DictReader(f))
+
+
+def _read_jsonl(path:Path):
+    if not path.is_file():return []
+    try:
+        return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    except Exception:
+        # The core owns JSONL parse diagnostics; this helper only supports release completeness gates.
+        return []
 
 
 def validate_measurement(run:Path,meta:dict,issues:list[Issue],ids:set,mode:str):
@@ -31,6 +43,18 @@ def validate_measurement(run:Path,meta:dict,issues:list[Issue],ids:set,mode:str)
         if i.code=="metric-target-missing":continue
         filtered.append(i)
     issues[start:]=filtered
+
+    # Release audit completeness: a header-only CSV is not a completed audit. The core already
+    # handles missing files and all row-level semantics; these checks close the empty-file false green.
+    if (meta.get("measurement_profile") or "")=="release":
+        answers=_read_jsonl(run/"ai_answers.jsonl")
+        total_answer_citations=sum(len(citation_urls(a)) for a in answers)
+        cpath=run/"citation_audit.csv"
+        if total_answer_citations>0 and cpath.is_file() and not _read(cpath):
+            issues.append(Issue("error","empty-citation-audit","release Answer Cells 含 citations 时 citation_audit.csv 不得只有表头或 0 数据行"))
+        apath=run/"annotation_rechecks.csv"
+        if len(answers)>=10 and apath.is_file() and not _read(apath):
+            issues.append(Issue("error","empty-annotation-rechecks","release Answer Cells >=10 时 annotation_rechecks.csv 不得只有表头或 0 数据行"))
 
     for e in emergent:
         name=e.get("canonical_name") or e.get("entity_id");status=(e.get("resolution_status") or "").lower();base=(e.get("measurement_target") or "").strip().lower();reviewed=(e.get("reviewed_measurement_target") or "").strip().lower()
