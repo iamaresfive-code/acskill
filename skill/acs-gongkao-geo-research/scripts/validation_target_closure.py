@@ -42,11 +42,13 @@ def validate_target_closure(run:Path,meta:dict,issues:list[Issue],universe:list,
     if extra:issues.append(Issue("error","target-audit-extra",f"measurement_target_audit 含非 Universe/非 resolved emergent：{sorted(extra)[:20]}"))
 
     for e in resolved_emergent:
-        eid=e.get("entity_id");name=e.get("canonical_name") or eid;t=effective_emergent_target(e)
-        if t not in VALID_ENTITY_TARGETS:issues.append(Issue("error","emergent-reviewed-target",f"{name}: reviewed_measurement_target 必须 institution/ip/both"));continue
+        eid=e.get("entity_id");name=e.get("canonical_name") or eid;base=(e.get("measurement_target") or "").strip().lower();t=effective_emergent_target(e)
+        if t not in VALID_ENTITY_TARGETS:issues.append(Issue("error","emergent-reviewed-target",f"{name}: measurement_target/reviewed_measurement_target 必须 institution/ip/both"));continue
+        if base not in VALID_ENTITY_TARGETS:issues.append(Issue("error","emergent-canonical-target",f"{name}: resolved registry measurement_target 必须 institution/ip/both"))
+        elif base!=t:issues.append(Issue("error","emergent-target-canonical-drift",f"{name}: canonical measurement_target={base} 与 reviewed target={t} 不一致"))
         if (e.get("measurement_target_review_status") or "")!="confirmed":issues.append(Issue("error","emergent-target-review-status",f"{name}: measurement_target_review_status 必须 confirmed"))
         a=aby.get(eid)
-        if a and (a.get("new_explicit_target") or "").strip()!=t:issues.append(Issue("error","emergent-target-audit-mismatch",f"{name}: registry reviewed target 与 audit 不一致"))
+        if a and (a.get("new_explicit_target") or "").strip()!=t:issues.append(Issue("error","emergent-target-audit-mismatch",f"{name}: registry target 与 audit 不一致"))
 
     expected_metric_keys=set()
     for u in universe:
