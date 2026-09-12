@@ -31,13 +31,17 @@ REQUIRED_DOCX_SECTIONS=(
 )
 
 FORBIDDEN_VISIBLE_TOKENS=(
-    "INTERNAL RESEARCH","Executive Summary","Market Universe","Query / Retrieval Robustness",
-    "Query/Retrieval Robustness","Concept Ownership","Asset Readiness","Expert / IP","Top3",
+    "INTERNAL RESEARCH","Executive Summary","Market Universe","Universe","AI Answer",
+    "Query / Retrieval Robustness","Query/Retrieval Robustness","Concept Ownership","Asset Readiness",
+    "Expert / IP","Expert/IP","Answer Cell","Top3","AI-emergent","Observation","Stage 1","Hybrid",
+    "Recall","Jaccard","N.A.","single-engine","limited-multi-engine","multi-engine","native",
+    "programmatic","semantic-retrieval-variants","external-search-augmented","not-collected",
     "measurement_target","market_role","market_scope","entity_type","sampling_mode",
     "answer_context_mode","context_isolation_level","query_variant_mode","repeat_runs_expected",
     "fresh_context_required","page_collection_status","positive_persistence_3of3_rate",
-    "pairwise_positive_set_jaccard","exact_positive_set_match_rate","unknown_fields",
+    "pairwise_positive_set_jaccard","exact_positive_set_match_rate","unknown_fields","unknown",
     "native-recorded","legacy-reconstructed","local-core","local-active","national-benchmark","expert-ip",
+    "Annotation Review","Resolution Recheck","Citation Audit","Engine Coverage Rate","Cross-model Consistency",
 )
 
 
@@ -67,7 +71,7 @@ def check_customer_docx(run:Path,issues:list[Issue]):
 
     leaked=[x for x in FORBIDDEN_VISIBLE_TOKENS if x in text]
     if leaked:
-        issues.append(Issue("error","customer-report-internal-field","客户版 DOCX 暴露内部字段/英文工程术语："+", ".join(leaked[:12])))
+        issues.append(Issue("error","customer-report-internal-field","客户版 DOCX 暴露内部字段/英文工程术语："+", ".join(leaked[:16])))
 
     engineering=re.findall(r"(?<![\w./-])[^\s|，。；：]{1,80}\.(?:csv|jsonl?|py)(?![\w-])",text,re.I)
     if engineering:
@@ -95,7 +99,6 @@ def check_customer_docx(run:Path,issues:list[Issue]):
 
 
 def validate_report(run:Path,issues:list[Issue],universe:list[dict],metrics:list[dict],emergent:list[dict]):
-    # Reuse the mature v2.2 data/report-layer validator while replacing only the visible DOCX contract.
     core.REQUIRED_DOCX_SECTIONS=REQUIRED_DOCX_SECTIONS
     core.validate_report(run,issues,universe,metrics,emergent)
     check_customer_docx(run,issues)
