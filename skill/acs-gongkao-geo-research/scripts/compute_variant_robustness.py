@@ -7,14 +7,14 @@ Outputs:
 - robustness_summary.json: descriptive aggregate metrics
 
 Variant IDs come from ai_answers.jsonl when natively recorded, otherwise from the audited
-answer_variant_manifest.csv sidecar. The script never invents a silent run-{sample_run} fallback.
-If query_variant_mode=semantic-retrieval-variants these metrics describe query/retrieval
-robustness, not stochastic repeatability under identical conditions.
+answer_variant_manifest.csv sidecar. AI-emergent entities prefer reviewed_measurement_target and
+may therefore contribute both institution and IP rows after Target Closure review.
 """
 from __future__ import annotations
 import argparse,csv,json,itertools,statistics
 from collections import defaultdict,Counter
 from pathlib import Path
+from measurement_target_utils import expanded_target,require_effective_emergent_target
 
 TRUE={"1","true","yes","y","是"};POSITIVE={"recommended","listed"};VARIANT_EVIDENCE={"native-recorded","legacy-reconstructed"}
 
@@ -33,8 +33,7 @@ def variant_map(run:Path,answers:list[dict]):
     manifest=rcsv(run/"answer_variant_manifest.csv");mmap={};evidence={}
     if manifest:
         if len({r.get("answer_id") for r in manifest})!=len(manifest):raise ValueError("answer_variant_manifest.csv answer_id 重复")
-        answer_ids={a.get("answer_id") for a in answers}
-        extra={r.get("answer_id") for r in manifest}-answer_ids
+        answer_ids={a.get("answer_id") for a in answers};extra={r.get("answer_id") for r in manifest}-answer_ids
         if extra:raise ValueError(f"answer_variant_manifest.csv 含未知 answer_id: {sorted(extra)[:10]}")
         for r in manifest:
             aid=r.get("answer_id");qv=(r.get("query_variant_id") or "").strip();status=(r.get("evidence_status") or "").strip()
@@ -62,11 +61,12 @@ def compute(run:Path):
         positive[m["answer_id"]].add(m.get("entity_id"))
     entity_targets=[]
     for u in universe:
-        t=(u.get("measurement_target") or "").strip()
-        for x in (["institution","ip"] if t=="both" else [t]):
-            if x in {"institution","ip"}:entity_targets.append((u.get("entity_id"),u.get("canonical_name"),x,u.get("universe_status")))
+        for x in expanded_target(u.get("measurement_target")):
+            entity_targets.append((u.get("entity_id"),u.get("canonical_name"),x,u.get("universe_status")))
     for e in emergent:
-        if e.get("resolution_status")=="resolved" and e.get("measurement_target") in {"institution","ip"}:entity_targets.append((e.get("entity_id"),e.get("canonical_name"),e.get("measurement_target"),"ai-emergent"))
+        if e.get("resolution_status")!="resolved":continue
+        declared=require_effective_emergent_target(e)
+        for x in expanded_target(declared):entity_targets.append((e.get("entity_id"),e.get("canonical_name"),x,"ai-emergent"))
     by_q_engine=defaultdict(list)
     for a in answers:by_q_engine[(a.get("query_id"),a.get("engine"))].append(a)
     engines_by_q=defaultdict(set)
@@ -96,16 +96,14 @@ def compute(run:Path):
     sf=["query_id","engine","variant_a","variant_b","answer_a","answer_b","positive_jaccard","exact_positive_set_match"]
     wcsv(run/"query_set_similarity.csv",sf,sim)
     summary={
-        "schema_version":"2.2","query_variant_mode":meta.get("query_variant_mode"),
-        "variant_evidence_status_counts":dict(variant_status),
+        "schema_version":"2.2","query_variant_mode":meta.get("query_variant_mode"),"variant_evidence_status_counts":dict(variant_status),
         "interpretation":"semantic retrieval/query robustness" if meta.get("query_variant_mode")=="semantic-retrieval-variants" else "repeatability under exact canonical query",
         "positive_persistence_3of3_rate":round(positive_all/positive_den,4) if positive_den else None,"positive_persistence_numerator":positive_all,"positive_persistence_denominator":positive_den,
         "pairwise_positive_set_jaccard_mean":round(statistics.fmean(jac),4) if jac else None,"pairwise_positive_set_jaccard_median":round(statistics.median(jac),4) if jac else None,
         "exact_positive_set_match_rate":round(exact/pair_n,4) if pair_n else None,"hit_pattern_distribution":dict(sorted(hit_patterns.items())),
         "note":"Descriptive/diagnostic only; legacy-reconstructed variant IDs are migration metadata, not originally recorded query strings."
     }
-    (run/"robustness_summary.json").write_text(json.dumps(summary,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
-    return summary
+    (run/"robustness_summary.json").write_text(json.dumps(summary,ensure_ascii=False,indent=2)+"\n",encoding="utf-8");return summary
 
 def main():
     p=argparse.ArgumentParser();p.add_argument("run_dir",type=Path);a=p.parse_args()
