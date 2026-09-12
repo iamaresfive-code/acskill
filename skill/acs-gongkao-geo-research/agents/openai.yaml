@@ -1,6 +1,6 @@
 interface:
-  display_name: "公考机构 GEO 调研 v2.2"
-  short_description: "先确认地区市场主体，再测真实 AI 提名；统一输出 Word 咨询报告"
-  default_prompt: "使用 $acs-gongkao-geo-research v2.2。先只确认尚未提供的三项：地区、用户希望一定覆盖的机构/品牌/老师IP Seed List、是否允许系统补充竞争主体。正式输出固定为 Word/DOCX，不再询问格式。Seed 只保证研究不加分。系统补充 Discovery 后必须先向用户展示全国基准、本地/区域机构、Expert/IP、观察主体四类 Market Universe，并获得确认后才能开始正式 Measurement。核心 GEO 使用固定无品牌问题记录真实 AI/AI Search 回答中的 Nomination、Top3、First Mention、Citation 和跨模型一致性；公开 Web SERP 与网页正文提及必须物理分离，只作为 GEO Asset Readiness 的解释层。至少20% AI answer cells 做 Blind Recheck。最终仅生成 report.docx，完成 strict validation 与 Word 视觉 QA 后交付。"
+  display_name: "公考机构 GEO 调研 v2.2.1"
+  short_description: "先确认地区市场主体，再测真实 AI 提名；默认输出全中文 Word 咨询报告"
+  default_prompt: "使用 $acs-gongkao-geo-research v2.2.1。先只确认尚未提供的三项：地区、用户希望一定覆盖的机构/品牌/老师IP Seed List、是否允许系统补充竞争主体。正式输出固定为简体中文 Word/DOCX，不再询问格式。Seed 只保证研究不加分。系统补充 Discovery 后，每个准备进入正式研究的主体至少保留 1 条可核验来源 URL，再展示全国基准、本地/区域机构、老师/IP、观察主体四类研究主体池并获得确认。核心 GEO 使用固定无品牌问题记录真实 AI 回答中的提名率、前三出现率、首提率和稳定性；公开 Web 资产只作为 GEO 资产基础和概念占位的解释层。客户报告只展示结论、排名、稳定性、机会矩阵、重点主体诊断和行动建议；内部字段、CSV/JSON/Python 文件名、审计明细不得进入客户 DOCX。原 Answer 无 citations 时引用率显示“不适用”，不得写 0%。最终完成 strict validation 与中文客户报告视觉 QA 后交付。"
 policy:
   allow_implicit_invocation: true
