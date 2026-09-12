@@ -94,6 +94,20 @@ Target Audit 必须覆盖：
 
 `hybrid_signal` 只是强制 Reviewer 注意 IP-led Brand / 工作室 / 品牌+老师入口 / 跨 target Raw Mention，不会自动赋值 `both`。若 `hybrid_signal=true`，应用前必须填写 `reviewer_reason`，说明为什么最终选择 institution/ip/both。
 
+### 2.2 `both` 的人工判定规则
+
+`both` 是 entity-level 的人工审核结论，不能由 `cross_target_ai_signal`、`hybrid_signal`、`entity_type=studio/person`、名称形式或“工作室”等关键词自动推出。
+
+品牌型 Entity 只有同时满足以下条件时才可判为 `both`：
+
+1. institution 入口本身成立，可作为机构/品牌对象独立应对机构类问题；
+2. IP 类问题中存在具名个人被 AI 作为独立推荐对象，而不是仅出现在机构师资页或从属介绍中；
+3. 该具名个人与当前品牌存在明确归属关系，且证据足以支持其构成该品牌的 IP 入口；
+4. 该具名个人未作为另一 canonical Entity 单列；若已单列，应优先保持品牌 `institution`、个人 `ip`，避免同一现实对象双重计分；
+5. Reviewer 必须在 `evidence_basis` / `reviewer_reason` 记录 institution 与 IP 两个入口以及反双重计分检查。
+
+反之，机构在 IP 类问题中被提及、名称含“工作室”、主体被标记为 person/studio、或 raw mention 跨 institution/ip，都只属于 review signal，不足以单独支持 `both`。
+
 ## 3. universe_review.json
 
 A/B/C/D 四桶必须互斥且覆盖全部 Universe；distribution 应包含 measurement_target。补 target 不得改变已确认 Market Bucket。AI-emergent 不回写 Stage 1 Market Bucket。
