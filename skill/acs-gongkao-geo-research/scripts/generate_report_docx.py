@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Generate the official Chinese customer-facing GEO DOCX report.
 
-The report is a decision product, not a dump of research internals. Internal field names,
-enums, file names and Python/JSON structures belong to the audit package, not the customer DOCX.
+The customer report is a decision product, not an engineering/audit dump. Internal fields,
+enums, file names, raw objects and developer-only terminology stay in the audit package.
 """
 from __future__ import annotations
 import argparse,json,re
@@ -14,21 +14,25 @@ REQUIRED_NONEMPTY_MAP=("measurement_protocol","robustness")
 
 ROLE_ZH={
     "national-benchmark":"全国品牌基准","local-core":"本地核心机构","local-active":"本地活跃机构",
-    "expert-ip":"老师 / 专家 IP","historical":"历史主体","observation":"观察主体","unclassified":"待分类",
+    "expert-ip":"老师 / 个人品牌","historical":"历史主体","observation":"观察主体","unclassified":"待分类",
 }
 SCOPE_ZH={"national":"全国","regional":"区域","local":"本地","unknown":"待核"}
-TARGET_ZH={"institution":"机构题","ip":"老师 / IP 题","both":"机构 + 老师 / IP 双入口"}
+TARGET_ZH={
+    "institution":"机构推荐类问题",
+    "ip":"老师推荐类问题",
+    "both":"同时参与机构推荐和老师推荐两类测量",
+}
 BINDING_ZH={
     "owned-declaration":"主体主动表达","high-frequency-public-binding":"公开内容高频绑定",
     "third-party-description":"第三方稳定描述","single-incidental-mention":"单次偶发提及",
 }
 PROTOCOL_ZH={
-    "release":"正式测量","snapshot":"快照测量","single-engine":"单引擎","limited-multi-engine":"有限多引擎","multi-engine":"多引擎",
-    "native":"模型原生回答","engine-native-search":"引擎自带搜索","external-search-augmented":"外部检索增强",
-    "api-isolated":"API 级隔离","product-isolated":"产品会话隔离","programmatic":"程序性隔离",
-    "exact-query-repeat":"同题重复","semantic-retrieval-variants":"语义等价问法",
+    "release":"正式测量","snapshot":"快照测量","single-engine":"单一 AI 入口","limited-multi-engine":"有限多个 AI 入口","multi-engine":"多个 AI 入口",
+    "native":"模型直接回答","engine-native-search":"AI 产品自带搜索","external-search-augmented":"外部检索增强",
+    "api-isolated":"完全独立上下文","product-isolated":"独立产品会话","programmatic":"程序创建独立会话",
+    "exact-query-repeat":"同一问法重复","semantic-retrieval-variants":"三种语义等价问法",
     "collected":"已采集网页正文","partial":"部分采集网页正文","not-collected":"未采集网页正文",
-    "scoped-geo-landscape":"指定地区竞争格局","blind-discovery-scan":"盲发现扫描",
+    "scoped-geo-landscape":"指定地区竞争格局","blind-discovery-scan":"公开网络发现扫描",
 }
 
 
@@ -66,7 +70,7 @@ def _answers(run:Path):
 
 
 def _customerize(value):
-    """Turn analysis-layer prose into customer-facing Chinese without serializing raw objects."""
+    """Translate analysis-layer prose into plain Chinese without serializing raw objects."""
     if value is None:return ""
     if isinstance(value,dict):
         for key in ("statement","title","name","recommendation","text"):
@@ -76,34 +80,39 @@ def _customerize(value):
         return "；".join(x for x in (_customerize(v) for v in value) if x)
     text=str(value).strip().replace("**","").replace("`","")
     replacements=[
-        ("AI Answer Measurement","AI 回答测量"),("AI Answer Visibility","AI 回答可见度"),("AI Answer","AI 回答"),
-        ("Answer Cell","回答样本"),("Market Universe","研究主体池"),("Universe","研究主体池"),
-        ("GEO Asset Readiness","GEO 资产基础"),("Asset Readiness","GEO 资产基础"),("Concept Ownership","概念占位"),
-        ("Query/Retrieval Robustness","提问与检索鲁棒性"),("Query / Retrieval Robustness","提问与检索鲁棒性"),
-        ("Exact Positive-set Match","正向名单完全一致率"),("Pairwise Positive-set Jaccard","不同问法推荐名单重合度"),("Jaccard","名单重合度"),
-        ("Cross-model Consistency","跨模型一致性"),("Engine Coverage Rate","引擎覆盖率"),
-        ("Citation Rate","引用率"),("Nomination Rate","提名率"),("Top3 Rate","前三出现率"),("First Mention Rate","首提率"),("Raw Mention Rate","原始提及率"),
-        ("Expert/IP","老师 / IP"),("Expert / IP","老师 / IP"),("AI-emergent","AI 回答中新出现的主体"),("Observation","观察组"),
-        ("Stage 1","研究主体确认阶段"),("Hybrid","双入口"),("Recall","记忆召回"),("N.A.","不适用"),
-        ("programmatic isolation","程序性隔离"),("programmatic 隔离","程序性隔离"),("programmatic","程序性隔离"),
-        ("native 上下文模式","模型原生回答模式"),("native 回答","模型原生回答"),("native","模型原生回答"),
-        ("external-search-augmented","外部检索增强"),("engine-native-search","引擎自带搜索"),
-        ("semantic-retrieval-variants","语义等价问法"),("exact-query-repeat","同题重复"),
-        ("limited-multi-engine","有限多引擎"),("single-engine","单引擎"),("multi-engine","多引擎"),
-        ("api-isolated","API 级隔离"),("product-isolated","产品会话隔离"),("not-collected","未采集"),
-        ("native-recorded","原生记录"),("legacy-reconstructed","历史重建记录"),("fresh context","独立新会话"),
-        ("Annotation Review","标注复核"),("Entity Resolution Recheck","实体解析复核"),("Resolution Recheck","实体解析复核"),("Citation Audit","引用审计"),
+        ("老师 / IP 题","老师推荐类问题"),("老师/IP题","老师推荐类问题"),("IP 题","老师推荐类问题"),("IP题","老师推荐类问题"),
+        ("机构题组","机构推荐类问题组"),("机构题","机构推荐类问题"),("IP 赛道","老师推荐赛道"),("IP赛道","老师推荐赛道"),("IP 分散","老师推荐分散"),
+        ("Top3 Rate","前三出现率"),("Top3 率","前三出现率"),("Top3率","前三出现率"),("Top3","前三出现率"),
+        ("First Mention Rate","第一位出现率"),("首提率","第一位出现率"),("Raw Mention Rate","原始提及率"),
+        ("AI Answer Measurement","AI 回答测量"),("AI Answer Visibility","AI 回答可见度"),("AI Answer","AI 回答"),("Answer Cell","回答样本"),
+        ("Market Universe","研究主体池"),("Universe","研究主体池"),("GEO Asset Readiness","GEO 资产基础"),("Asset Readiness","GEO 资产基础"),("Concept Ownership","概念占位"),
+        ("Query/Retrieval Robustness","提问稳定性"),("Query / Retrieval Robustness","提问稳定性"),("Query Matrix","固定问题组"),
+        ("Exact Positive-set Match","推荐名单完全一致率"),("Pairwise Positive-set Jaccard","不同问法推荐名单重合度"),("Jaccard","名单重合度"),
+        ("Cross-model Consistency","跨模型一致性"),("Engine Coverage Rate","AI 入口覆盖率"),("Citation Rate","引用率"),("Nomination Rate","提名率"),
+        ("Entity Resolution","主体识别"),("Metrics","正式测量结果"),("Metric","测量结果"),("citations","引用来源"),("citation","引用"),
+        ("page mention","网页正文提及"),("Seed List","用户指定主体"),("Seed","用户指定主体"),
+        ("Expert/IP","老师 / 个人品牌"),("Expert / IP","老师 / 个人品牌"),("老师 / IP","老师 / 个人品牌"),
+        ("AI-emergent","AI 回答中新出现的主体"),("Observation","观察组"),("Stage 1","研究主体确认阶段"),("Hybrid","双入口"),("Recall","已有知识"),("N.A.","不适用"),
+        ("programmatic isolation","程序创建独立会话"),("programmatic 隔离","程序创建独立会话"),("programmatic","程序创建独立会话"),
+        ("native 上下文模式","模型直接回答模式"),("native 回答","模型直接回答"),("native","模型直接回答"),
+        ("external-search-augmented","外部检索增强"),("engine-native-search","AI 产品自带搜索"),
+        ("semantic-retrieval-variants","语义等价问法"),("exact-query-repeat","同一问法重复"),
+        ("limited-multi-engine","有限多个 AI 入口"),("single-engine","单一 AI 入口"),("multi-engine","多个 AI 入口"),
+        ("api-isolated","完全独立上下文"),("product-isolated","独立产品会话"),("API 级物理上下文重置","完全独立的上下文隔离"),("API 级","完全独立的"),
+        ("not-collected","未采集"),("native-recorded","原生记录"),("legacy-reconstructed","历史重建记录"),("fresh context","独立新会话"),
+        ("Annotation Review","标注复核"),("Entity Resolution Recheck","主体识别复核"),("Resolution Recheck","主体识别复核"),("Citation Audit","引用复核"),
         ("owned-declaration","主体主动表达"),("high-frequency-public-binding","公开内容高频绑定"),("third-party-description","第三方稳定描述"),("single-incidental-mention","单次偶发提及"),
-        ("target-specific","按测量对象分开"),("recommended + listed","推荐或正常列入名单"),("recommended","推荐"),("listed","列入名单"),
-        ("institution 通道","机构通道"),("institution 组","机构题组"),("institution","机构"),
+        ("target-specific","按问题类型分开"),("recommended + listed","推荐或正常列入名单"),("recommended","推荐"),("listed","列入名单"),
+        ("institution 通道","机构推荐类问题"),("institution 组","机构推荐类问题组"),("institution","机构"),
         ("unknown","暂无可核验证据"),("Tier","等级"),
     ]
     for a,b in replacements:text=text.replace(a,b)
-    return re.sub(r"\s+"," ",text).strip()
+    text=re.sub(r"\bAPI\b","接口",text)
+    text=re.sub(r"\s+"," ",text).strip()
+    return text
 
 
 def _customer_safe(text):
-    """Do not send obviously engineering-only limitation lines to the customer body."""
     if not text:return False
     if re.search(r"\b[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+\b",text):return False
     if re.search(r"\.(?:csv|jsonl?|py)\b",text,re.I):return False
@@ -111,11 +120,22 @@ def _customer_safe(text):
     return True
 
 
+def _plan_text(value):
+    text=_customerize(value)
+    text=re.sub(r"为全部\s*\d+\s*个本土\s*/?\s*区域主体建立", "为自身机构建立", text)
+    text=text.replace("为每个目标主体锁定","围绕自身品牌锁定")
+    text=text.replace("作为工程有效性的唯一判据","作为阶段性复测指标之一")
+    return text
+
+
 def render(run:Path,out:Path):
     Document,Mm,Pt,ALIGN,TALIGN,CVAL,OxmlElement,qn=_deps()
     model=json.loads((run/"report_model.json").read_text(encoding="utf-8"));_assert_complete(model)
     meta=model.get("meta",{});answers=_answers(run)
     citation_applicable=sum(len(a.get("citations") or []) for a in answers)>0
+    asset_rows=model.get("asset_readiness") or []
+    asset_by_name={str(x.get("canonical_name") or "").strip():x for x in asset_rows if x.get("canonical_name")}
+
     d=Document();sec=d.sections[0]
     sec.page_width=Mm(210);sec.page_height=Mm(297);sec.top_margin=Mm(18);sec.bottom_margin=Mm(18);sec.left_margin=Mm(19);sec.right_margin=Mm(19)
     styles=d.styles
@@ -176,8 +196,16 @@ def render(run:Path,out:Path):
     def citation_value(r):return pct(r.get("citation_rate")) if citation_applicable else "不适用"
     def vis_rows(rows):
         return [[i+1,r.get("canonical_name"),hit(r),pct(r.get("nomination_rate")),pct(r.get("top3_rate")),pct(r.get("first_mention_rate")),citation_value(r),r.get("asset_readiness") or "暂不评分"] for i,r in enumerate(rows)]
-    VIS_HEAD=["排名","主体","命中/样本","提名率","前三出现率","首提率","引用率","GEO资产基础"]
-    VIS_W=[10,32,20,17,20,17,18,25]
+    def sync_asset_text(name,text):
+        txt=_customerize(text);row=asset_by_name.get(str(name or "").strip()) or {}
+        try:score=float(row.get("asset_readiness"));tier=str(row.get("asset_tier") or "").strip()
+        except:return txt
+        txt=re.sub(r"资产(?:基础)?分\s*\d+(?:\.\d+)?",f"资产基础得分 {score:.1f}",txt)
+        if tier:txt=re.sub(r"等级\s*[A-Za-z][+-]?",f"等级 {tier}",txt)
+        return txt
+
+    VIS_HEAD=["排名","主体","被提名次数/回答样本","提名率","前三出现率","第一位出现率","引用率","GEO资产基础"]
+    VIS_W=[10,31,27,17,20,21,18,22]
 
     for _ in range(5):d.add_paragraph("")
     p=d.add_paragraph();p.alignment=ALIGN.CENTER;r=p.add_run(model.get("title","") or "公考 GEO 竞争格局报告");set_run(r,28,True)
@@ -193,87 +221,91 @@ def render(run:Path,out:Path):
 
     h("核心结论",1)
     k=model.get("kpis",{})
-    table(["正式研究主体","全国品牌","本地/区域机构","老师 / IP","观察主体","AI 入口"],[[k.get("included_entities"),k.get("national_benchmarks"),k.get("local_institutions"),k.get("expert_ip"),k.get("observation_entities"),k.get("ai_engines")]],widths=[28,26,30,26,26,24],font=9)
+    table(["正式研究主体","全国品牌","本地/区域机构","老师/个人品牌","观察主体","AI 测量入口"],[[k.get("included_entities"),k.get("national_benchmarks"),k.get("local_institutions"),k.get("expert_ip"),k.get("observation_entities"),k.get("ai_engines")]],widths=[28,26,30,30,26,24],font=9)
     for x in model.get("executive_summary",[]):bullet(x)
-    para("阅读顺序建议：先看前三类 AI 可见度排名，再看“AI 可见度 × GEO 资产基础”矩阵，最后看重点主体诊断与 90 天行动。",9.5)
+    para("阅读顺序建议：先看全国品牌、本地机构和老师三类 AI 可见度，再看重点优化机会，最后看重点主体诊断与 90 天行动。",9.5)
 
-    page_break();h("一、竞争格局总览",1)
-    chart("universe")
-    para("上图把 AI 提名率与公开 GEO 资产基础放在同一张图中。虚线为本轮样本中位数，仅用于相对比较：右上代表“资产基础与 AI 可见度都较强”；右下往往意味着公开资产已经具备，但 AI 认知尚未同步，是值得优先诊断的机会区。",9.5)
+    page_break();h("一、重点优化机会",1);chart("universe")
+    para("上图只筛选“公开资产基础相对较强，但在同类问题中 AI 提名率仍偏低”的主体。机构推荐类和老师推荐类分别按各自的提名率基准筛选，不把两类样本直接混在一起。两项数值分别解读，不相加成一个综合分。",9.5)
 
     page_break();h("二、全国品牌 AI 可见度",1);chart("national_visibility")
-    rows=model.get("ai_visibility",{}).get("national_benchmarks",[]);table(VIS_HEAD,vis_rows(rows),widths=VIS_W,font=8.3)
-    para("提名率表示主体在对应无品牌问题中被正向推荐或正常列入名单的比例；“命中/样本”给出实际分子与分母。",9)
-    if not citation_applicable:para("本轮 AI 回答环境未提供引用来源，因此“引用率”记为“不适用”，不能解释为主体被 AI 零引用。",9)
+    rows=model.get("ai_visibility",{}).get("national_benchmarks",[]);table(VIS_HEAD,vis_rows(rows),widths=VIS_W,font=8.2)
+    para("提名率表示：在对应的无品牌推荐问题中，该主体被 AI 正向推荐或正常列入名单的比例。",9)
+    if not citation_applicable:para("本轮 AI 回答环境未提供可核验引用来源，因此“引用率”记为“不适用”，不能解释为主体被 AI 零引用。",9)
 
     page_break();h("三、本地 / 区域机构 AI 可见度",1);chart("local_visibility")
-    rows=model.get("ai_visibility",{}).get("local_institutions",[]);table(VIS_HEAD,vis_rows(rows),widths=VIS_W,font=8.3)
-    para("本表只比较本次已确认进入正式研究的本地 / 区域机构；观察主体与 AI 回答中新出现的主体在后文单独披露，不混入主榜。",9)
+    rows=model.get("ai_visibility",{}).get("local_institutions",[]);table(VIS_HEAD,vis_rows(rows),widths=VIS_W,font=8.2)
+    para("本表只比较本次已确认进入正式研究的本地 / 区域机构；观察主体和 AI 回答中新出现的竞争者在后文单独披露，不混入主榜。",9)
 
-    page_break();h("四、老师 / IP AI 可见度",1);chart("ip_visibility")
-    rows=model.get("ai_visibility",{}).get("expert_ip",[]);table(VIS_HEAD,vis_rows(rows),widths=VIS_W,font=8.3)
-    para("老师 / IP 与机构使用不同的问题组与样本分母，不把两类对象混在同一排名里。若同一品牌同时具备机构与个人入口，也分别计算。",9)
+    page_break();h("四、老师 / 个人品牌 AI 可见度",1);chart("ip_visibility")
+    rows=model.get("ai_visibility",{}).get("expert_ip",[]);table(VIS_HEAD,vis_rows(rows),widths=VIS_W,font=8.2)
+    para("老师推荐类问题与机构推荐类问题使用不同的问题组和样本分母，因此分别排名。若同一品牌同时具有机构入口和具名老师入口，也按两类问题分别计算。",9)
 
     page_break();h("五、结果稳定性",1)
     rb=model.get("robustness") or {};hp2=rb.get("hit_pattern_distribution") or {}
-    table(["用户可读指标","结果","怎么理解"],[
+    table(["指标","结果","怎么理解"],[
         ["三种问法持续命中率",pct_smart(rb.get("positive_persistence_3of3_rate")),"至少命中过一次的主体×问题组合中，三种语义等价问法都能继续命中的比例"],
         ["不同问法推荐名单平均重合度",pct_smart(rb.get("pairwise_positive_set_jaccard_mean")),"数值越高，换一种问法后推荐名单越接近"],
-        ["推荐名单完全一致率",pct_smart(rb.get("exact_positive_set_match_rate")),"三种问法得到完全相同正向名单的比例"],
+        ["推荐名单完全一致率",pct_smart(rb.get("exact_positive_set_match_rate")),"三种问法得到完全相同推荐名单的比例"],
     ],widths=[48,28,84],font=9)
     if hp2:
         labels={"0/3":"三种问法都未命中","1/3":"仅一种问法命中","2/3":"两种问法命中","3/3":"三种问法都命中"}
         table(["命中稳定性","主体×问题组合数"],[[labels.get(x,x),hp2[x]] for x in ("0/3","1/3","2/3","3/3") if x in hp2],widths=[70,50],font=9)
-    para("这里衡量的是“换一种语义等价问法后，结果是否仍然出现”，不是现实市场份额，也不是跨所有 AI 模型的一致性。",9)
+    para("这里衡量的是“换一种等价问法后，结果是否仍然出现”，不是现实市场份额，也不是所有 AI 模型的共同结论。",9)
 
     page_break();h("六、概念占位",1);chart("concept_ownership")
     concepts=sorted(model.get("concept_map",[]),key=lambda x:float(x.get("strength") or 0),reverse=True)[:12]
     table(["主体","已形成的概念绑定","强度","绑定性质"],[[x.get("canonical_name") or x.get("entity_name"),x.get("concept"),x.get("strength"),BINDING_ZH.get(x.get("binding_type"),"可核验公开绑定")] for x in concepts],widths=[36,58,18,48],font=8.5)
-    para("概念占位回答“机器在公开信息中更容易把谁和什么概念联系在一起”。单次偶发第三方提及不会被包装成强绑定。",9)
+    para("概念占位回答的是：公开信息是否已经让机器较稳定地把某个主体和某个具体概念联系起来。单次偶发提及不会被当成强绑定。",9)
 
     page_break();h("七、GEO 资产基础",1);chart("asset_readiness")
-    assets=model.get("asset_readiness",[]);scored=[];unscored=[]
-    for x in assets:
-        try:float(x.get("asset_readiness"));scored.append(x)
+    all_scored=[];unscored=[]
+    for x in asset_rows:
+        try:float(x.get("asset_readiness"));all_scored.append(x)
         except:unscored.append(x)
-    scored=scored[:15]
-    table(["排名","主体","资产基础得分","等级","可核验证据数","独立域名"],[[i+1,x.get("canonical_name") or x.get("entity_id"),x.get("asset_readiness"),x.get("asset_tier") or "—",x.get("evidence_count") or "—",x.get("independent_domains") or "—"] for i,x in enumerate(scored)],widths=[12,42,26,18,30,28],font=8.5)
-    para(f"本轮共有 {len(scored)+len(unscored)} 个报告主体，其中 {len(scored)} 个具备足够公开证据形成资产基础评分，{len(unscored)} 个因公开证据不足暂不评分。暂不评分不等于 0 分，也不代表主体一定没有相关资产。",9)
+    top_scored=all_scored[:15]
+    table(["排名","主体","资产基础得分","等级","可核验证据数","独立域名"],[[i+1,x.get("canonical_name") or x.get("entity_id"),x.get("asset_readiness"),x.get("asset_tier") or "—",x.get("evidence_count") or "—",x.get("independent_domains") or "—"] for i,x in enumerate(top_scored)],widths=[12,42,26,18,30,28],font=8.5)
+    para(f"本轮共有 {len(all_scored)+len(unscored)} 个报告主体，其中 {len(all_scored)} 个具备足够公开证据形成资产基础评分。图表和主表展示前 15 名；另有 {len(unscored)} 个主体因公开证据不足暂不评分。暂不评分不等于 0 分。",9)
 
     page_break();h("八、观察主体与新出现竞争者",1)
     obs=model.get("ai_visible_observation",[])
     if obs:
         h("观察主体中已被 AI 提名的对象",2)
-        table(["主体","命中/样本","提名率","前三出现率","范围"],[[x.get("canonical_name"),hit(x),pct(x.get("nomination_rate")),pct(x.get("top3_rate")),SCOPE_ZH.get(x.get("market_scope"),"待核")] for x in obs],widths=[46,26,25,28,30],font=8.5)
+        table(["主体","被提名次数/回答样本","提名率","前三出现率","范围"],[[x.get("canonical_name"),hit(x),pct(x.get("nomination_rate")),pct(x.get("top3_rate")),SCOPE_ZH.get(x.get("market_scope"),"待核")] for x in obs],widths=[42,34,25,28,30],font=8.5)
     else:para("本轮观察主体没有获得正向提名。",9.5)
     ai_new=model.get("ai_visible_emergent",[])
     if ai_new:
         h("AI 回答中自然出现的新竞争者",2)
-        table(["主体","测量对象","命中/样本","提名率","前三出现率"],[[x.get("canonical_name"),TARGET_ZH.get(x.get("measurement_target_for_report") or x.get("measurement_target"),"待核"),hit(x),pct(x.get("nomination_rate")),pct(x.get("top3_rate"))] for x in ai_new],widths=[46,38,26,25,28],font=8.5)
-        para("这些对象不是事先塞进主榜的候选，而是在真实 AI 回答中自然出现，因此单独保留，避免污染预先确认的比较范围。",9)
-    else:para("本轮没有出现研究主体池之外且已完成解析的新竞争者。",9.5)
+        table(["主体","问题类型","被提名次数/回答样本","提名率","前三出现率"],[[x.get("canonical_name"),TARGET_ZH.get(x.get("measurement_target_for_report") or x.get("measurement_target"),"待核"),hit(x),pct(x.get("nomination_rate")),pct(x.get("top3_rate"))] for x in ai_new],widths=[42,42,34,25,28],font=8.5)
+        para("这些对象不是事先加入主榜的候选，而是在真实 AI 回答中自然出现，因此单独列出，避免影响预先确认的比较范围。",9)
+    else:para("本轮没有出现研究主体池之外且已完成识别的新竞争者。",9.5)
 
     page_break();h("九、重点主体诊断",1)
     for x in model["diagnoses"]:
-        h(x.get("name") or x.get("entity") or "主体诊断",2)
+        name=x.get("name") or x.get("entity") or "主体诊断";h(name,2)
         table(["项目","判断"],[
             ["当前角色",ROLE_ZH.get(x.get("market_role"),_customerize(x.get("market_role")))],
-            ["AI 可见度",x.get("ai_visibility","")],["已形成优势",x.get("strongest_asset","")],
-            ["当前短板",x.get("largest_gap","")],["优先动作",x.get("recommendation","")],
+            ["AI 可见度",_customerize(x.get("ai_visibility",""))],
+            ["已形成优势",sync_asset_text(name,x.get("strongest_asset",""))],
+            ["当前短板",_customerize(x.get("largest_gap",""))],
+            ["优先动作",_customerize(x.get("recommendation",""))],
         ],widths=[30,130],font=9)
 
     page_break();h("十、区域策略与 90 天行动",1)
+    para("下面的行动建议面向“希望提升自身 GEO 表现的机构或老师”，不是要求替竞争对手建设内容资产。",9,True)
     h("区域策略",2)
-    for x in model["strategy"]:bullet(x)
+    for x in model["strategy"]:bullet(_plan_text(x))
     h("90 天行动",2)
-    for x in model["plan_90_days"]:bullet(x)
+    for x in model["plan_90_days"]:bullet(_plan_text(x))
 
     page_break();h("十一、如何理解本报告",1)
     kept=0
     for x in model["risks"]:
+        raw=str(x)
+        if not citation_applicable and re.search(r"citations?|引用率",raw,re.I):continue
         if bullet(x):kept+=1
     if kept==0:bullet("本报告基于本轮记录条件下的 AI 回答与公开网络证据，结论应作为阶段性 GEO 诊断，不应外推为所有模型、所有时间点的固定事实。")
-    if not citation_applicable:bullet("本轮回答环境没有提供可核验引用链，因此不评估引用率；报告中的“不适用”不能解释为“AI 从未引用该主体”。")
+    if not citation_applicable:bullet("本轮回答环境没有提供可核验引用来源，因此引用率不适用；这不能解释为“AI 从未引用该主体”。")
     bullet("本报告测量的是记录条件下的 AI 回答可见度，不等于真实市场份额、招生规模、教学效果、通过率或一般口碑。")
 
     page_break();h("附录：研究口径与主体清单",1)
@@ -287,24 +319,24 @@ def render(run:Path,out:Path):
         ["问法设计",PROTOCOL_ZH.get(pr.get("query_variant_mode"),"固定问法")],
         ["回答样本数",pr.get("answer_cells","")],
         ["观察日期",pr.get("observation_date") or meta.get("observation_date","")],
-        ["引用链", "可评估" if citation_applicable else "本轮环境不提供，故不评估"],
+        ["引用来源", "可评估" if citation_applicable else "本轮环境不提供，故不评估"],
     ],widths=[48,112],font=9)
     h("正式研究主体",2)
     subject_rows=[]
-    group_labels={"national_benchmarks":"全国品牌","local_institutions":"本地 / 区域机构","expert_ip":"老师 / IP","other_included":"其他正式主体"}
+    group_labels={"national_benchmarks":"全国品牌","local_institutions":"本地 / 区域机构","expert_ip":"老师 / 个人品牌","other_included":"其他正式主体"}
     for group,rows in (model.get("market_universe") or {}).items():
         for r in rows:subject_rows.append([r.get("canonical_name"),group_labels.get(group,"正式主体"),TARGET_ZH.get(r.get("measurement_target"),"待核")])
-    table(["主体","类别","测量对象"],subject_rows,widths=[66,48,46],font=8.5)
+    table(["主体","类别","问题类型"],subject_rows,widths=[66,48,46],font=8.5)
     if unscored:
         h("公开证据不足、暂不评分的主体",2)
         para("、".join(x.get("canonical_name") or x.get("entity_id") for x in unscored),9)
     h("方法说明",2)
     for x in [
         "用户指定主体只保证纳入研究与解析，不会因为被用户指定而获得任何分数加成。",
-        "机构与老师 / IP 使用不同问题组和分母，双入口主体也分别计算。",
+        "机构推荐类问题与老师推荐类问题使用不同的问题组和样本分母，同一主体若同时具备两类入口，也分别计算。",
         "AI 回答测量与公开网页证据分开：前者回答“AI 是否提到”，后者用于解释“为什么更容易被机器认识”。",
         "公开证据不足时保留未知状态，不把“没找到证据”写成 0 分。",
-        "完整研究底稿、审计表和可复算数据保留在运行目录中，不在客户版报告正文展开。",
+        "完整研究底稿和可复算数据保留在运行目录中，不在客户版报告正文展开。",
     ]:bullet(x)
 
     ensure_directory(out.parent);d.save(out);return out
