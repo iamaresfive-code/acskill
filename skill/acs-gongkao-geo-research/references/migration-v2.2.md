@@ -61,6 +61,8 @@ measurement_target_review_source # measurement_target_audit.csv
 
 对 resolved emergent，`measurement_target` 与 `reviewed_measurement_target` 必须一致。若 Reviewer 判 `both`，两列都写 `both`，Metrics / Robustness / Report 分别产生 institution 与 ip 两条轨道。
 
+`both` 仍然必须是人工证据结论，而不是信号自动推断。品牌型 emergent 只有在 institution 入口成立、IP 类问题中存在具名个人作为独立推荐对象、该个人与品牌归属关系明确、且该个人未作为另一 canonical Entity 单列时，才可判为 `both`。如果个人已经单列 Entity，应优先拆成品牌 `institution` + 个人 `ip`，避免双重计分。cross-target mention、`hybrid_signal`、studio/person 类型或名称形式仅用于提示 Reviewer。
+
 对 `resolution_status=unresolved` 的 emergent，不做最终 entity-level hybrid 判定，`measurement_target` 仍只能是发现来源对应的单一 `institution/ip`，且不得进入正式 Metrics。
 
 Release strict validation 会检查：全部 resolved emergent 已进入 Target Audit、reviewed target 已确认、registry target 与 audit 一致、以及最终 `ai_metrics.csv` 不多不少地覆盖 reviewed entity×target 集合。
