@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Shared Measurement Target helpers.
 
-Universe entities persist their final target in market_universe.csv. AI-emergent entities keep the
-legacy single-target `measurement_target` field for backward compatibility and may additionally
-carry `reviewed_measurement_target=institution|ip|both` after explicit Target Closure review.
-Downstream metrics/reporting must prefer reviewed_measurement_target when present.
+Entity-level targets use institution/ip/both. For migrated AI-emergent rows,
+`reviewed_measurement_target` is retained as audit provenance and must match the canonical
+`measurement_target` after review. Downstream readers still prefer the reviewed field when present
+so pre-closure legacy runs can be inspected without mutating raw evidence.
 """
 from __future__ import annotations
 import csv
@@ -26,7 +26,7 @@ def expanded_target(value:str)->list[str]:
 
 
 def effective_emergent_target(row:dict)->str:
-    """Return reviewed target when present; otherwise legacy registry target."""
+    """Return reviewed target when present; otherwise canonical/legacy registry target."""
     reviewed=str(row.get("reviewed_measurement_target") or "").strip().lower()
     if reviewed:return reviewed
     return str(row.get("measurement_target") or "").strip().lower()
