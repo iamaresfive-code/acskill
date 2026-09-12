@@ -8,7 +8,7 @@ from validation_common import *
 from validation_universe import validate_universe
 from validation_measurement import validate_measurement
 from validation_target_closure import validate_target_closure
-from validation_report import validate_report
+from validation_report_customer import validate_report
 
 def validate(run:Path,strict=False,stage="full"):
     issues=[]
