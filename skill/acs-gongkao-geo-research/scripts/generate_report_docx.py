@@ -2,7 +2,7 @@
 """Generate the official Chinese customer-facing GEO DOCX report.
 
 The customer report is a decision product, not an engineering/audit dump. Internal fields,
-enums, file names, raw objects and developer-only terminology stay in the audit package.
+enums, files, raw objects and developer-only terminology stay in the audit package.
 """
 from __future__ import annotations
 import argparse,json,re
@@ -17,11 +17,7 @@ ROLE_ZH={
     "expert-ip":"老师 / 个人品牌","historical":"历史主体","observation":"观察主体","unclassified":"待分类",
 }
 SCOPE_ZH={"national":"全国","regional":"区域","local":"本地","unknown":"待核"}
-TARGET_ZH={
-    "institution":"机构推荐类问题",
-    "ip":"老师推荐类问题",
-    "both":"同时参与机构推荐和老师推荐两类测量",
-}
+TARGET_ZH={"institution":"机构推荐类问题","ip":"老师推荐类问题","both":"同时参与机构推荐和老师推荐两类测量"}
 BINDING_ZH={
     "owned-declaration":"主体主动表达","high-frequency-public-binding":"公开内容高频绑定",
     "third-party-description":"第三方稳定描述","single-incidental-mention":"单次偶发提及",
@@ -80,19 +76,23 @@ def _customerize(value):
         return "；".join(x for x in (_customerize(v) for v in value) if x)
     text=str(value).strip().replace("**","").replace("`","")
     replacements=[
+        ("老师 / IP 赛道","老师推荐赛道"),("老师/IP赛道","老师推荐赛道"),("老师 / IP 分散","老师推荐分散"),
         ("老师 / IP 题","老师推荐类问题"),("老师/IP题","老师推荐类问题"),("IP 题","老师推荐类问题"),("IP题","老师推荐类问题"),
         ("机构题组","机构推荐类问题组"),("机构题","机构推荐类问题"),("IP 赛道","老师推荐赛道"),("IP赛道","老师推荐赛道"),("IP 分散","老师推荐分散"),
+        ("3/3 全命中率","三种问法持续命中率"),("3/3全命中率","三种问法持续命中率"),
+        ("正向集合完全一致率","推荐名单完全一致率"),("正向集合","推荐名单"),
         ("Top3 Rate","前三出现率"),("Top3 率","前三出现率"),("Top3率","前三出现率"),("Top3","前三出现率"),
         ("First Mention Rate","第一位出现率"),("首提率","第一位出现率"),("Raw Mention Rate","原始提及率"),
         ("AI Answer Measurement","AI 回答测量"),("AI Answer Visibility","AI 回答可见度"),("AI Answer","AI 回答"),("Answer Cell","回答样本"),
-        ("Market Universe","研究主体池"),("Universe","研究主体池"),("GEO Asset Readiness","GEO 资产基础"),("Asset Readiness","GEO 资产基础"),("Concept Ownership","概念占位"),
-        ("Query/Retrieval Robustness","提问稳定性"),("Query / Retrieval Robustness","提问稳定性"),("Query Matrix","固定问题组"),
+        ("Market Universe","研究主体池"),("Universe","研究主体池"),("GEO Asset Readiness","GEO 资产基础"),("GEO 资产就绪度","GEO 资产基础"),("Asset Readiness","GEO 资产基础"),("Concept Ownership","概念占位"),
+        ("Query/Retrieval Robustness","结果稳定性"),("Query / Retrieval Robustness","结果稳定性"),("提问与检索鲁棒性","结果稳定性"),("Query Matrix","固定问题组"),
         ("Exact Positive-set Match","推荐名单完全一致率"),("Pairwise Positive-set Jaccard","不同问法推荐名单重合度"),("Jaccard","名单重合度"),
         ("Cross-model Consistency","跨模型一致性"),("Engine Coverage Rate","AI 入口覆盖率"),("Citation Rate","引用率"),("Nomination Rate","提名率"),
-        ("Entity Resolution","主体识别"),("Metrics","正式测量结果"),("Metric","测量结果"),("citations","引用来源"),("citation","引用"),
+        ("正式 Metrics","正式测量统计"),("Entity Resolution","主体识别"),("Metrics","正式测量结果"),("Metric","测量结果"),("citations","引用来源"),("citation","引用"),
         ("page mention","网页正文提及"),("Seed List","用户指定主体"),("Seed","用户指定主体"),
         ("Expert/IP","老师 / 个人品牌"),("Expert / IP","老师 / 个人品牌"),("老师 / IP","老师 / 个人品牌"),
         ("AI-emergent","AI 回答中新出现的主体"),("Observation","观察组"),("Stage 1","研究主体确认阶段"),("Hybrid","双入口"),("Recall","已有知识"),("N.A.","不适用"),
+        ("单引擎","单一 AI 入口"),("模型原生回答","模型直接回答"),("程序性隔离","程序创建独立会话"),("记忆召回","已有知识"),
         ("programmatic isolation","程序创建独立会话"),("programmatic 隔离","程序创建独立会话"),("programmatic","程序创建独立会话"),
         ("native 上下文模式","模型直接回答模式"),("native 回答","模型直接回答"),("native","模型直接回答"),
         ("external-search-augmented","外部检索增强"),("engine-native-search","AI 产品自带搜索"),
@@ -107,7 +107,9 @@ def _customerize(value):
         ("unknown","暂无可核验证据"),("Tier","等级"),
     ]
     for a,b in replacements:text=text.replace(a,b)
+    text=text.replace("降低 主体识别 歧义","减少 AI 对主体身份的混淆")
     text=re.sub(r"\bAPI\b","接口",text)
+    text=re.sub(r"[，,；;]?\s*等级\s*[A-Z][+-]?\b","",text)
     text=re.sub(r"\s+"," ",text).strip()
     return text
 
@@ -128,13 +130,20 @@ def _plan_text(value):
     return text
 
 
+def _diagnosis_gap(value):
+    text=_customerize(value)
+    if re.search(r"退费|投诉|客诉|负面",text):
+        return "公开第三方信息中存在需要进一步核验的服务体验争议信号；本报告不将其作为确定事实，建议单独核验来源与时效。"
+    if "模型既有认知" in text or "已有知识" in text:
+        return "本轮公开证据不足以解释当前 AI 可见度的来源，建议补充独立可核验的主体主页与内容节点。"
+    return text
+
+
 def render(run:Path,out:Path):
     Document,Mm,Pt,ALIGN,TALIGN,CVAL,OxmlElement,qn=_deps()
     model=json.loads((run/"report_model.json").read_text(encoding="utf-8"));_assert_complete(model)
-    meta=model.get("meta",{});answers=_answers(run)
-    citation_applicable=sum(len(a.get("citations") or []) for a in answers)>0
-    asset_rows=model.get("asset_readiness") or []
-    asset_by_name={str(x.get("canonical_name") or "").strip():x for x in asset_rows if x.get("canonical_name")}
+    meta=model.get("meta",{});answers=_answers(run);citation_applicable=sum(len(a.get("citations") or []) for a in answers)>0
+    asset_rows=model.get("asset_readiness") or [];asset_by_name={str(x.get("canonical_name") or "").strip():x for x in asset_rows if x.get("canonical_name")}
 
     d=Document();sec=d.sections[0]
     sec.page_width=Mm(210);sec.page_height=Mm(297);sec.top_margin=Mm(18);sec.bottom_margin=Mm(18);sec.left_margin=Mm(19);sec.right_margin=Mm(19)
@@ -189,23 +198,52 @@ def render(run:Path,out:Path):
         try:
             x=float(v);return f"{(x*100 if abs(x)<=1 else x):.1f}%"
         except:return "—"
+    def score1(v,missing="暂不评分"):
+        try:return f"{float(v):.1f}"
+        except:return missing
     def hit(r):
-        m=r.get("target_metrics") or {};k=r.get("measurement_target_for_report") or ""
-        row=m.get(k) or (next(iter(m.values())) if m else {})
+        m=r.get("target_metrics") or {};k=r.get("measurement_target_for_report") or "";row=m.get(k) or (next(iter(m.values())) if m else {})
         a=row.get("mentioned_answers");b=row.get("answer_cells");return f"{a}/{b}" if a not in (None,"") and b not in (None,"") else "—"
-    def citation_value(r):return pct(r.get("citation_rate")) if citation_applicable else "不适用"
     def vis_rows(rows):
-        return [[i+1,r.get("canonical_name"),hit(r),pct(r.get("nomination_rate")),pct(r.get("top3_rate")),pct(r.get("first_mention_rate")),citation_value(r),r.get("asset_readiness") or "暂不评分"] for i,r in enumerate(rows)]
+        base=[[i+1,r.get("canonical_name"),hit(r),pct(r.get("nomination_rate")),pct(r.get("top3_rate")),pct(r.get("first_mention_rate"))] for i,r in enumerate(rows)]
+        if citation_applicable:
+            return [row+[pct(r.get("citation_rate")),score1(r.get("asset_readiness"))] for row,r in zip(base,rows)]
+        return [row+[score1(r.get("asset_readiness"))] for row,r in zip(base,rows)]
     def sync_asset_text(name,text):
         txt=_customerize(text);row=asset_by_name.get(str(name or "").strip()) or {}
-        try:score=float(row.get("asset_readiness"));tier=str(row.get("asset_tier") or "").strip()
+        try:score=float(row.get("asset_readiness"))
         except:return txt
         txt=re.sub(r"资产(?:基础)?分\s*\d+(?:\.\d+)?",f"资产基础得分 {score:.1f}",txt)
-        if tier:txt=re.sub(r"等级\s*[A-Za-z][+-]?",f"等级 {tier}",txt)
+        txt=re.sub(r"[，,；;]?\s*等级\s*[A-Z][+-]?\b","",txt)
         return txt
+    def customer_summary():
+        out=[];vis=model.get("ai_visibility") or {}
+        nat=vis.get("national_benchmarks") or [];local=vis.get("local_institutions") or [];teachers=vis.get("expert_ip") or []
+        if nat:
+            top=nat[:2];parts=[f"{r.get('canonical_name')} {pct(r.get('nomination_rate'))}" for r in top]
+            out.append("全国品牌方面，"+"、".join(parts)+"位居本轮前列。")
+        if local:
+            top=local[:3];parts=[f"{r.get('canonical_name')} {pct(r.get('nomination_rate'))}" for r in top]
+            out.append("本地 / 区域机构方面，"+"、".join(parts)+"位居本轮前列，内部差距较明显。")
+        if teachers:
+            top=teachers[:3];parts=[f"{r.get('canonical_name')} {pct(r.get('nomination_rate'))}" for r in top]
+            out.append("老师 / 个人品牌方面，"+"、".join(parts)+"位居本轮前列。")
+        rb=model.get("robustness") or {}
+        persist=pct_smart(rb.get("positive_persistence_3of3_rate"));exact=pct_smart(rb.get("exact_positive_set_match_rate"))
+        if persist!="—":out.append(f"结果对问法较敏感：三种等价问法持续命中率为 {persist}，推荐名单完全一致率为 {exact}。")
+        new_count=len(model.get("ai_visible_emergent") or [])
+        if new_count:out.append(f"另有 {new_count} 个事先未进入主榜的竞争主体在 AI 回答中自然出现，已单独列示，不混入预先确认的主榜。")
+        engines=(model.get("kpis") or {}).get("ai_engines") or 0
+        if engines==1:out.append("本轮使用单一 AI 测量入口，结果只代表本轮记录条件下的阶段性可见度，不代表全部 AI 产品、现实市场份额或教学质量。")
+        elif engines:out.append(f"本轮覆盖 {engines} 个 AI 测量入口，结论仍是阶段性可见度结果，不代表现实市场份额或教学质量。")
+        return out
 
-    VIS_HEAD=["排名","主体","被提名次数/回答样本","提名率","前三出现率","第一位出现率","引用率","GEO资产基础"]
-    VIS_W=[10,31,27,17,20,21,18,22]
+    if citation_applicable:
+        VIS_HEAD=["排名","主体","被提名次数/回答样本","提名率","前三出现率","第一位出现率","引用率","GEO资产基础"]
+        VIS_W=[10,31,27,17,20,21,18,22]
+    else:
+        VIS_HEAD=["排名","主体","被提名次数/回答样本","提名率","前三出现率","第一位出现率","GEO资产基础"]
+        VIS_W=[10,34,30,18,21,22,25]
 
     for _ in range(5):d.add_paragraph("")
     p=d.add_paragraph();p.alignment=ALIGN.CENTER;r=p.add_run(model.get("title","") or "公考 GEO 竞争格局报告");set_run(r,28,True)
@@ -219,19 +257,18 @@ def render(run:Path,out:Path):
     fp=section.footer.paragraphs[0];fp.alignment=ALIGN.CENTER;fp.add_run("公开信息研究 · ");fld=OxmlElement("w:fldSimple");fld.set(qn("w:instr"),"PAGE");fp._p.append(fld)
     sec.header.paragraphs[0].clear();sec.footer.paragraphs[0].clear()
 
-    h("核心结论",1)
-    k=model.get("kpis",{})
+    h("核心结论",1);k=model.get("kpis",{})
     table(["正式研究主体","全国品牌","本地/区域机构","老师/个人品牌","观察主体","AI 测量入口"],[[k.get("included_entities"),k.get("national_benchmarks"),k.get("local_institutions"),k.get("expert_ip"),k.get("observation_entities"),k.get("ai_engines")]],widths=[28,26,30,30,26,24],font=9)
-    for x in model.get("executive_summary",[]):bullet(x)
-    para("阅读顺序建议：先看全国品牌、本地机构和老师三类 AI 可见度，再看重点优化机会，最后看重点主体诊断与 90 天行动。",9.5)
+    for x in customer_summary():bullet(x)
+    para("阅读顺序建议：先看三类 AI 可见度排名，再看“重点优化机会”，最后看重点主体诊断与 90 天行动。",9.5)
 
     page_break();h("一、重点优化机会",1);chart("universe")
-    para("上图只筛选“公开资产基础相对较强，但在同类问题中 AI 提名率仍偏低”的主体。机构推荐类和老师推荐类分别按各自的提名率基准筛选，不把两类样本直接混在一起。两项数值分别解读，不相加成一个综合分。",9.5)
+    para("这张图只筛选“公开资产基础相对较强，但在同类问题中 AI 提名率仍偏低”的主体。机构推荐类与老师推荐类分别使用各自的提名率基准，不跨类型混用样本分母。两项数值分别解读，不相加成综合分。",9.5)
 
     page_break();h("二、全国品牌 AI 可见度",1);chart("national_visibility")
     rows=model.get("ai_visibility",{}).get("national_benchmarks",[]);table(VIS_HEAD,vis_rows(rows),widths=VIS_W,font=8.2)
     para("提名率表示：在对应的无品牌推荐问题中，该主体被 AI 正向推荐或正常列入名单的比例。",9)
-    if not citation_applicable:para("本轮 AI 回答环境未提供可核验引用来源，因此“引用率”记为“不适用”，不能解释为主体被 AI 零引用。",9)
+    if not citation_applicable:para("本轮 AI 回答环境未提供可核验引用来源，因此本报告不评估引用率。",9)
 
     page_break();h("三、本地 / 区域机构 AI 可见度",1);chart("local_visibility")
     rows=model.get("ai_visibility",{}).get("local_institutions",[]);table(VIS_HEAD,vis_rows(rows),widths=VIS_W,font=8.2)
@@ -264,7 +301,7 @@ def render(run:Path,out:Path):
         try:float(x.get("asset_readiness"));all_scored.append(x)
         except:unscored.append(x)
     top_scored=all_scored[:15]
-    table(["排名","主体","资产基础得分","等级","可核验证据数","独立域名"],[[i+1,x.get("canonical_name") or x.get("entity_id"),x.get("asset_readiness"),x.get("asset_tier") or "—",x.get("evidence_count") or "—",x.get("independent_domains") or "—"] for i,x in enumerate(top_scored)],widths=[12,42,26,18,30,28],font=8.5)
+    table(["排名","主体","资产基础得分","可核验证据数","独立域名"],[[i+1,x.get("canonical_name") or x.get("entity_id"),score1(x.get("asset_readiness"),"—"),x.get("evidence_count") or "—",x.get("independent_domains") or "—"] for i,x in enumerate(top_scored)],widths=[14,48,30,34,30],font=8.5)
     para(f"本轮共有 {len(all_scored)+len(unscored)} 个报告主体，其中 {len(all_scored)} 个具备足够公开证据形成资产基础评分。图表和主表展示前 15 名；另有 {len(unscored)} 个主体因公开证据不足暂不评分。暂不评分不等于 0 分。",9)
 
     page_break();h("八、观察主体与新出现竞争者",1)
@@ -287,12 +324,12 @@ def render(run:Path,out:Path):
             ["当前角色",ROLE_ZH.get(x.get("market_role"),_customerize(x.get("market_role")))],
             ["AI 可见度",_customerize(x.get("ai_visibility",""))],
             ["已形成优势",sync_asset_text(name,x.get("strongest_asset",""))],
-            ["当前短板",_customerize(x.get("largest_gap",""))],
+            ["当前短板",_diagnosis_gap(x.get("largest_gap",""))],
             ["优先动作",_customerize(x.get("recommendation",""))],
         ],widths=[30,130],font=9)
 
     page_break();h("十、区域策略与 90 天行动",1)
-    para("下面的行动建议面向“希望提升自身 GEO 表现的机构或老师”，不是要求替竞争对手建设内容资产。",9,True)
+    para("下面的行动建议面向希望提升自身 GEO 表现的机构或老师，不是要求替竞争对手建设内容资产。",9,True)
     h("区域策略",2)
     for x in model["strategy"]:bullet(_plan_text(x))
     h("90 天行动",2)
@@ -321,15 +358,13 @@ def render(run:Path,out:Path):
         ["观察日期",pr.get("observation_date") or meta.get("observation_date","")],
         ["引用来源", "可评估" if citation_applicable else "本轮环境不提供，故不评估"],
     ],widths=[48,112],font=9)
-    h("正式研究主体",2)
-    subject_rows=[]
+    h("正式研究主体",2);subject_rows=[]
     group_labels={"national_benchmarks":"全国品牌","local_institutions":"本地 / 区域机构","expert_ip":"老师 / 个人品牌","other_included":"其他正式主体"}
     for group,rows in (model.get("market_universe") or {}).items():
         for r in rows:subject_rows.append([r.get("canonical_name"),group_labels.get(group,"正式主体"),TARGET_ZH.get(r.get("measurement_target"),"待核")])
     table(["主体","类别","问题类型"],subject_rows,widths=[66,48,46],font=8.5)
     if unscored:
-        h("公开证据不足、暂不评分的主体",2)
-        para("、".join(x.get("canonical_name") or x.get("entity_id") for x in unscored),9)
+        h("公开证据不足、暂不评分的主体",2);para("、".join(x.get("canonical_name") or x.get("entity_id") for x in unscored),9)
     h("方法说明",2)
     for x in [
         "用户指定主体只保证纳入研究与解析，不会因为被用户指定而获得任何分数加成。",
