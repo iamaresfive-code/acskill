@@ -7,6 +7,7 @@ from pathlib import Path
 from validation_common import *
 from validation_universe import validate_universe
 from validation_measurement import validate_measurement
+from validation_target_closure import validate_target_closure
 from validation_report import validate_report
 
 def validate(run:Path,strict=False,stage="full"):
@@ -27,7 +28,9 @@ def validate(run:Path,strict=False,stage="full"):
         if meta.get("measurement_allowed") is not True:issues.append(Issue("error","measurement-not-authorized","measurement_allowed 必须为 true"))
     universe,ids=validate_universe(run,meta,issues,require_confirmed)
     metrics=[];emergent=[]
-    if stage in {"measurement","report","full"}:metrics,emergent=validate_measurement(run,meta,issues,ids,mode)
+    if stage in {"measurement","report","full"}:
+        metrics,emergent=validate_measurement(run,meta,issues,ids,mode)
+        validate_target_closure(run,meta,issues,universe,metrics,emergent)
     if stage in {"report","full"}:validate_report(run,issues,universe,metrics,emergent)
     return issues
 
