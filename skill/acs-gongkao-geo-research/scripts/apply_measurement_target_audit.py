@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Apply reviewed Measurement Target Audit to Universe + resolved AI-emergent entities.
 
-Universe entities persist their reviewed target directly in market_universe.csv. AI-emergent
-entities keep the legacy single-target `measurement_target` for backward compatibility and gain
-`reviewed_measurement_target`, which may be institution/ip/both and is authoritative downstream.
-No target is inferred here.
+Universe and resolved AI-emergent entities persist the reviewed entity-level target directly in
+`measurement_target` (institution/ip/both). The optional `reviewed_measurement_target` sidecar is
+retained as review provenance for migrated runs and must match the canonical target. No target is
+inferred here.
 """
 from __future__ import annotations
 import argparse,csv,json
@@ -40,6 +40,8 @@ def apply(run:Path):
     if errors:raise ValueError("Measurement Target Audit 未完成：\n- "+"\n- ".join(errors))
     if "measurement_target" not in ufields:
         idx=ufields.index("entity_type")+1 if "entity_type" in ufields else len(ufields);ufields.insert(idx,"measurement_target")
+    if "measurement_target" not in xfields:
+        idx=xfields.index("aliases")+1 if "aliases" in xfields else len(xfields);xfields.insert(idx,"measurement_target")
     changes=0;universe_changes=0;emergent_changes=0;both_emergent=0
     for r in universe:
         a=by[r.get("entity_id")];old=(r.get("measurement_target") or "").strip();new=a.get("new_explicit_target").strip();r["measurement_target"]=new
@@ -49,11 +51,9 @@ def apply(run:Path):
         if field not in xfields:xfields.append(field)
     for r in emergent:
         if (r.get("resolution_status") or "").strip().lower()!="resolved":continue
-        a=by[r.get("entity_id")];new=a.get("new_explicit_target").strip();old=(r.get("reviewed_measurement_target") or r.get("measurement_target") or "").strip()
-        r["reviewed_measurement_target"]=new;r["measurement_target_review_status"]="confirmed";r["measurement_target_review_source"]="measurement_target_audit.csv"
-        # Preserve legacy registry compatibility: its measurement_target remains a single query target.
-        if new in {"institution","ip"}:r["measurement_target"]=new
-        else:both_emergent+=1
+        a=by[r.get("entity_id")];new=a.get("new_explicit_target").strip();old=(r.get("measurement_target") or "").strip()
+        r["measurement_target"]=new;r["reviewed_measurement_target"]=new;r["measurement_target_review_status"]="confirmed";r["measurement_target_review_source"]="measurement_target_audit.csv"
+        if new=="both":both_emergent+=1
         if old!=new:changes+=1;emergent_changes+=1
         a["changed"]="true" if old!=new else "false"
     write_csv(up,ufields,universe);write_csv(xp,xfields,emergent);write_csv(ap,afields,audit)
