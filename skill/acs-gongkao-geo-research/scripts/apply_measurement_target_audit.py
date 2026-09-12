@@ -5,6 +5,9 @@ Universe and resolved AI-emergent entities persist the reviewed entity-level tar
 `measurement_target` (institution/ip/both). The optional `reviewed_measurement_target` sidecar is
 retained as review provenance for migrated runs and must match the canonical target. No target is
 inferred here.
+
+Stage 1 may legitimately run before `ai_emergent_entities.csv` exists. In that case the emergent
+set is empty; the second Target Audit closure runs after Stage 2 creates/resolves emergent entities.
 """
 from __future__ import annotations
 import argparse,csv,json
@@ -20,8 +23,9 @@ def write_csv(p,fields,rows):
     with p.open("w",encoding="utf-8-sig",newline="") as f:w=csv.DictWriter(f,fieldnames=fields);w.writeheader();w.writerows(rows)
 def apply(run:Path):
     up=run/"market_universe.csv";xp=run/"ai_emergent_entities.csv";ap=run/"measurement_target_audit.csv";mp=run/"run_metadata.json"
-    if not up.is_file() or not xp.is_file() or not ap.is_file() or not mp.is_file():raise ValueError("缺 market_universe.csv / ai_emergent_entities.csv / measurement_target_audit.csv / run_metadata.json")
-    universe,ufields=read_csv(up);emergent,xfields=read_csv(xp);audit,afields=read_csv(ap);by={r.get("entity_id"):r for r in audit};errors=[]
+    missing=[p.name for p in (up,ap,mp) if not p.is_file()]
+    if missing:raise ValueError("缺文件："+" / ".join(missing))
+    universe,ufields=read_csv(up);emergent,xfields=(read_csv(xp) if xp.is_file() else ([],[]));audit,afields=read_csv(ap);by={r.get("entity_id"):r for r in audit};errors=[]
     if len(by)!=len(audit):errors.append("measurement_target_audit.csv entity_id 重复")
     expected={r.get("entity_id"):("universe",r.get("canonical_name") or r.get("entity_id")) for r in universe}
     for r in emergent:
@@ -40,23 +44,26 @@ def apply(run:Path):
     if errors:raise ValueError("Measurement Target Audit 未完成：\n- "+"\n- ".join(errors))
     if "measurement_target" not in ufields:
         idx=ufields.index("entity_type")+1 if "entity_type" in ufields else len(ufields);ufields.insert(idx,"measurement_target")
-    if "measurement_target" not in xfields:
+    if emergent and "measurement_target" not in xfields:
         idx=xfields.index("aliases")+1 if "aliases" in xfields else len(xfields);xfields.insert(idx,"measurement_target")
     changes=0;universe_changes=0;emergent_changes=0;both_emergent=0
     for r in universe:
         a=by[r.get("entity_id")];old=(r.get("measurement_target") or "").strip();new=a.get("new_explicit_target").strip();r["measurement_target"]=new
         if old!=new:changes+=1;universe_changes+=1
         a["changed"]="true" if old!=new else "false"
-    for field in ("reviewed_measurement_target","measurement_target_review_status","measurement_target_review_source"):
-        if field not in xfields:xfields.append(field)
-    for r in emergent:
-        if (r.get("resolution_status") or "").strip().lower()!="resolved":continue
-        a=by[r.get("entity_id")];new=a.get("new_explicit_target").strip();old=(r.get("measurement_target") or "").strip()
-        r["measurement_target"]=new;r["reviewed_measurement_target"]=new;r["measurement_target_review_status"]="confirmed";r["measurement_target_review_source"]="measurement_target_audit.csv"
-        if new=="both":both_emergent+=1
-        if old!=new:changes+=1;emergent_changes+=1
-        a["changed"]="true" if old!=new else "false"
-    write_csv(up,ufields,universe);write_csv(xp,xfields,emergent);write_csv(ap,afields,audit)
+    if emergent:
+        for field in ("reviewed_measurement_target","measurement_target_review_status","measurement_target_review_source"):
+            if field not in xfields:xfields.append(field)
+        for r in emergent:
+            if (r.get("resolution_status") or "").strip().lower()!="resolved":continue
+            a=by[r.get("entity_id")];new=a.get("new_explicit_target").strip();old=(r.get("measurement_target") or "").strip()
+            r["measurement_target"]=new;r["reviewed_measurement_target"]=new;r["measurement_target_review_status"]="confirmed";r["measurement_target_review_source"]="measurement_target_audit.csv"
+            if new=="both":both_emergent+=1
+            if old!=new:changes+=1;emergent_changes+=1
+            a["changed"]="true" if old!=new else "false"
+    write_csv(up,ufields,universe)
+    if xp.is_file():write_csv(xp,xfields,emergent)
+    write_csv(ap,afields,audit)
     meta=json.loads(mp.read_text(encoding="utf-8"));meta.update({
         "measurement_target_reviewed":True,"measurement_target_review_source":"measurement_target_audit.csv","measurement_target_hybrid_signals_reviewed":True,
         "resolved_emergent_target_reviewed":True,"resolved_emergent_target_review_count":sum((r.get('resolution_status') or '').lower()=='resolved' for r in emergent),
