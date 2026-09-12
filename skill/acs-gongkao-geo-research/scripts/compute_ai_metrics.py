@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Compute transparent AI Answer visibility metrics.
 
-v2.2.2 rules:
+v2.2 rules:
 - Market Universe measurement_target is explicit: institution/ip/both.
-- Hybrid entities produce one metrics row per target; denominators never mix institution and IP questions.
+- Resolved AI-emergent entities prefer reviewed_measurement_target after Target Closure review and
+  may also be institution/ip/both.
+- Hybrid entities produce one metrics row per target; denominators never mix institution and IP.
 - Only resolved, entity-correct recommended/listed mentions count as positive nominations.
 - Raw mentions remain auditable even when non-positive.
 """
@@ -11,6 +13,7 @@ from __future__ import annotations
 import argparse,csv,json,re
 from collections import defaultdict
 from pathlib import Path
+from measurement_target_utils import expanded_target,require_effective_emergent_target
 
 TRUE={"1","true","yes","y","是"};POSITIVE={"recommended","listed"}
 OUT_FIELDS=["entity_id","canonical_name","entity_type","measurement_target","market_scope","market_role","universe_status","answer_cells","raw_mentioned_answers","raw_mention_rate","mentioned_answers","nomination_rate","top3_answers","top3_rate","first_mention_answers","first_mention_rate","cited_answers","citation_rate","engines_sampled","engines_mentioned","engine_coverage_rate","cross_model_consistency"]
@@ -37,15 +40,16 @@ def compute(run:Path):
     qmap={q["query_id"]:q for q in queries};amap={a["answer_id"]:a for a in answers};answer_target={a["answer_id"]:qmap.get(a.get("query_id"),{}).get("measurement_target","") for a in answers}
     entity_rows=[]
     for u in universe:
-        target=(u.get("measurement_target") or "").strip().lower()
-        if target not in {"institution","ip","both"}:raise ValueError(f"{u.get('canonical_name')} measurement_target 必须显式为 institution/ip/both")
-        for t in (["institution","ip"] if target=="both" else [target]):
+        target=(u.get("measurement_target") or "").strip().lower();targets=expanded_target(target)
+        if not targets:raise ValueError(f"{u.get('canonical_name')} measurement_target 必须显式为 institution/ip/both")
+        for t in targets:
             x=dict(u);x["_measurement_target"]=t;entity_rows.append(x)
     for e in emergent:
         if (e.get("resolution_status") or "").lower()!="resolved":continue
-        t=(e.get("measurement_target") or "").lower()
-        if t not in {"institution","ip"}:raise ValueError(f"AI-emergent {e.get('canonical_name')} measurement_target 无效")
-        entity_rows.append({"entity_id":e.get("entity_id",""),"canonical_name":e.get("canonical_name",""),"entity_type":"ip" if t=="ip" else "institution","market_scope":e.get("market_scope") or "unknown","market_role":"observation","universe_status":"ai-emergent","_measurement_target":t})
+        declared=require_effective_emergent_target(e);targets=expanded_target(declared)
+        for t in targets:
+            base=(e.get("measurement_target") or "").strip().lower()
+            entity_rows.append({"entity_id":e.get("entity_id",""),"canonical_name":e.get("canonical_name",""),"entity_type":"ip" if base=="ip" else "institution","market_scope":e.get("market_scope") or "unknown","market_role":"observation","universe_status":"ai-emergent","_measurement_target":t})
     known_ids={x.get("entity_id") for x in entity_rows};raw_by=defaultdict(list);positive_by=defaultdict(list);positive_by_answer=defaultdict(list)
     for m in mentions:
         aid=m.get("answer_id","");eid=m.get("entity_id","")
