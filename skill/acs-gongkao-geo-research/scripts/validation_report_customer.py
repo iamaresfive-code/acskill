@@ -10,19 +10,10 @@ from validation_common import Issue
 W="{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 
 REQUIRED_DOCX_SECTIONS=(
-    "核心结论",
-    "一、重点优化机会",
-    "二、全国品牌 AI 可见度",
-    "三、本地 / 区域机构 AI 可见度",
-    "四、老师 / 个人品牌 AI 可见度",
-    "五、结果稳定性",
-    "六、概念占位",
-    "七、GEO 资产基础",
-    "八、观察主体与新出现竞争者",
-    "九、重点主体诊断",
-    "十、区域策略与 90 天行动",
-    "十一、如何理解本报告",
-    "附录：研究口径与主体清单",
+    "核心结论","一、重点优化机会","二、全国品牌 AI 可见度","三、本地 / 区域机构 AI 可见度",
+    "四、老师 / 个人品牌 AI 可见度","五、结果稳定性","六、概念占位","七、GEO 资产基础",
+    "八、观察主体与新出现竞争者","九、重点主体诊断","十、区域策略与 90 天行动",
+    "十一、如何理解本报告","附录：研究口径与主体清单",
 )
 
 FORBIDDEN_VISIBLE_TOKENS=(
@@ -37,8 +28,8 @@ FORBIDDEN_VISIBLE_TOKENS=(
     "pairwise_positive_set_jaccard","exact_positive_set_match_rate","unknown_fields","unknown",
     "native-recorded","legacy-reconstructed","local-core","local-active","national-benchmark","expert-ip",
     "Annotation Review","Resolution Recheck","Citation Audit","Engine Coverage Rate","Cross-model Consistency",
-    # customer-facing jargon that should be expanded into plain Chinese
-    "机构题","IP 题","IP题","老师 / IP","Metrics","Entity Resolution","Query Matrix","citations","page mention","用户 Seed","API 级","等级 U",
+    "机构题","IP 题","IP题","老师 / IP","Metrics","Entity Resolution","Query Matrix","citations","page mention","用户 Seed","API 级",
+    "单引擎","模型原生回答","程序性隔离","记忆召回","首提率","正向集合",
 )
 
 
@@ -53,8 +44,7 @@ def _answer_citations(run:Path):
     total=0
     try:
         for line in p.read_text(encoding="utf-8").splitlines():
-            if not line.strip():continue
-            total+=len(json.loads(line).get("citations") or [])
+            if line.strip():total+=len(json.loads(line).get("citations") or [])
     except Exception:return None
     return total
 
@@ -70,15 +60,22 @@ def check_customer_docx(run:Path,issues:list[Issue]):
 
     engineering=re.findall(r"(?<![\w./-])[^\s|，。；：]{1,80}\.(?:csv|jsonl?|py)(?![\w-])",text,re.I)
     if engineering:issues.append(Issue("error","customer-report-engineering-file","客户版 DOCX 不应展示工程文件名："+", ".join(sorted(set(engineering))[:10])))
-
     if re.search(r"\{\s*['\"][^{}\n]{1,80}['\"]\s*:\s*",text):issues.append(Issue("error","customer-report-raw-object","客户版 DOCX 出现原始 Python/JSON 对象字符串"))
 
     snake=sorted(set(re.findall(r"\b[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+\b",text)))
     if snake:issues.append(Issue("error","customer-report-snake-case","客户版 DOCX 出现内部 snake_case 字段："+", ".join(snake[:12])))
 
+    tiers=sorted(set(re.findall(r"等级\s*[A-Z](?:[+-])?",text)))
+    if tiers:issues.append(Issue("error","customer-report-tier-code","客户版报告不展示内部字母等级，只展示资产基础得分："+", ".join(tiers[:10])))
+
+    if re.search(r"仅弱相关|更依赖品牌记忆",text):
+        issues.append(Issue("error","customer-report-overclaim","客户版报告出现未经统计/因果验证的强推断（弱相关/依赖品牌记忆）"))
+    if re.search(r"为全部\s*\d+\s*个本土|为每个目标主体锁定|唯一判据",text):
+        issues.append(Issue("error","customer-report-action-scope","90 天行动仍把竞争主体当成客户可执行对象，或把复测写成唯一判据"))
+
     citations=_answer_citations(run)
     if citations==0:
-        if "不适用" not in text:issues.append(Issue("error","customer-report-citation-na","原 Answer 无引用链时，客户版报告必须明确把引用率写为“不适用”"))
+        if "不适用" not in text and "不评估引用率" not in text:issues.append(Issue("error","customer-report-citation-na","原 Answer 无引用链时，客户版报告必须明确引用率不适用/不评估"))
         if re.search(r"引用率.{0,12}(?:恒为|为|=)?\s*0(?:\.0)?%?",text):issues.append(Issue("error","customer-report-citation-zero","原 Answer 无引用链时不得把引用率写成 0 或 0%"))
 
     sections=core.docx_sections(docx);english_headings=[]
