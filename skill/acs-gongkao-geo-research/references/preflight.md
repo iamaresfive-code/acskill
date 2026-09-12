@@ -1,131 +1,57 @@
-# v2.1 Preflight：启动前只确认三件事
+# Preflight v2.2
 
-Preflight 的目的不是增加流程感，而是防止一次完整 GEO Research Run 在研究范围、强制关注主体或正式交付格式上跑偏。
+## 目标
 
-## 1. 三个必填参数
+启动阶段只解决“范围”和“研究对象”，不开始任何正式 Measurement。
 
-```text
-requested_region
-requested_entities
-requested_output_format
-```
+## 三个用户输入
 
-并写入 `run_metadata.json`：
+1. `requested_region`
+2. `seed_entities`
+3. `allow_discovery_supplement`
+
+正式输出固定为 `docx`，不再询问格式。
+
+## Seed List
+
+用户可以只给部分主体。每个 Seed 必须进入 Market Universe Review，最终只能是 `included / observation / unresolved`。Seed 不影响分数，也不自动进入主榜。
+
+用户明确“没有名单，自己找”时，`seed_entities=[]` 且 `research_mode=blind-discovery-scan`。这种模式只能输出公开网络发现扫描，不得宣称完整地区竞争全景。
+
+## Universe Confirmation
+
+完成系统补充后，Agent 必须先展示四组：全国基准、本地/区域机构、Expert/IP、观察/历史/未解析主体。用户确认后才写：
 
 ```json
-{
-  "schema_version": "2.1",
-  "skill_version": "2.1",
-  "run_status": "ready",
-  "region_confirmed": true,
-  "specified_entities_confirmed": true,
-  "output_format_confirmed": true,
-  "requested_region": "天津",
-  "normalized_region": "天津市",
-  "region_type": "municipality",
-  "research_scope": ["天津市"],
-  "requested_entities": ["津仕教育", "北宋教育"],
-  "requested_output_format": ["docx"]
-}
+{"market_universe_confirmed": true, "measurement_allowed": true}
 ```
 
-若任一确认字段不是 `true`：
+未确认不得继续正式测量。
 
-```text
-run_status = preflight-incomplete
+## Stage 2 前的 Measurement Capability Check
+
+这一步不是新增用户问题，而是执行者必须完成的运行环境自检。进入 AI Answer Measurement 前，实际探测可用 AI / AI Search 引擎，再用：
+
+```bash
+python3 scripts/configure_measurement.py <run-dir> \
+  --engine actual-engine-name \
+  --context-mode native \
+  --profile snapshot \
+  --repeat-runs 1 \
+  --allow-shared-context
 ```
 
-不得进入正式完整 Research Run。
+正式发布型测量使用：
 
-## 2. 第一问：地区
-
-只在用户尚未提供地区时问：
-
-> 这次要调查哪个省份、城市或区域的公考 GEO？例如广东省、天津市、广州市、珠三角、粤东地区。
-
-标准化：
-
-- 天津 → 天津市 → `municipality`
-- 广东 → 广东省 → `province`
-- 广州 → 广州市 → `city`
-
-非行政区如珠三角、苏南、粤东：建立明确 `research_scope`；边界存在明显争议时再问用户，不自行猜模糊范围。
-
-## 3. 第二问：指定关注主体
-
-只在用户尚未表达“有 / 没有指定主体”时问：
-
-> 是否有你特别希望调查的机构、品牌或老师/IP？没有就由系统自动发现；有的话可以一次输入多个名称。
-
-指定主体：
-
-- `user_specified=true`
-- 强制进入 Candidate Pool
-- 不得产生 Score Bonus
-- 不得改变 Measurement 题池
-- 不得提高 Evidence Grade / Entity Confidence / External Diversity / Concept Ownership / Freshness
-- 最终必须有明确状态，不得静默消失
-
-## 4. 第三问：唯一正式交付格式
-
-只在用户尚未提供格式时问：
-
-> 本次正式报告需要 Word（.docx）、PDF（.pdf）还是 HTML（.html）？请选择一种；只有明确要求时才生成多个格式。
-
-映射：
-
-- Word / docx → `docx`
-- PDF → `pdf`
-- HTML / 网页 → `html`
-
-内部研究资产不算正式交付物。
-
-## 5. 典型对话
-
-### Case A：信息全缺
-
-用户：
-
-> 做一个公考 GEO 报告。
-
-先只问：
-
-> 这次调查哪个地区？
-
-### Case B：部分已知
-
-用户：
-
-> 做天津公考 GEO。
-
-不重复问天津。继续确认：
-
-> 是否有指定关注的机构、品牌或老师/IP？
-
-之后再问正式报告格式。
-
-### Case C：只缺格式
-
-用户：
-
-> 做天津公考 GEO，把津仕和北宋放进去。
-
-只问：
-
-> 最终要 Word、PDF 还是 HTML？
-
-### Case D：三个参数都明确
-
-用户：
-
-> 做天津公考 GEO，把津仕和北宋放进去，出 Word。
-
-不再提问。直接确认：
-
-```text
-调查地区：天津市
-指定关注：津仕、北宋
-正式产出：Word（.docx）
+```bash
+python3 scripts/configure_measurement.py <run-dir> \
+  --engine actual-engine-name \
+  --context-mode native \
+  --profile release \
+  --repeat-runs 3 \
+  --fresh-context
 ```
 
-然后开始。
+执行者只能传入已经实际验证可用的引擎。若没有可用 AI 引擎，应显式降级为 `asset-audit-only`，不得伪造第二模型。
+
+`answer_context_mode_expected` 只能是 `native / engine-native-search / external-search-augmented`。不同 context mode 不得在同一 Run 混用。若执行者先做外部 Web Search/RAG 再把结果提供给模型，必须标 `external-search-augmented`，不能包装成模型原生 Recall。

@@ -1,111 +1,126 @@
 #!/usr/bin/env python3
-"""Build the deterministic GEO v2.1.1 Report Model from current-run data only."""
+"""Build the single v2.2 report model used only by the DOCX renderer.
+
+Market buckets are frozen by the confirmed Market Universe. Measurement target is a separate
+axis and never reclassifies an institution into Expert/IP (or vice versa). Hybrid entities,
+including reviewed AI-emergent hybrids, may carry institution and IP metrics simultaneously.
+All QA counts in the model are computed from final persisted files to avoid report/data drift.
+
+Report Layer 追加（v2.2 Report Layer Completion）：
+- measurement_protocol：把 run_metadata 的协议披露字段显式搬进报告模型，供 DOCX 强制披露；
+- robustness：直接读取最终 robustness_summary.json，不手抄数字；
+- risks：来自 analysis.json.limitations，并补齐协议/口径层面的固定局限；
+- 报告层不得为空——空 analysis 会构建出空 diagnosis/strategy/plan，由 report validator 阻断。
+"""
 from __future__ import annotations
 import argparse,csv,json
-from collections import Counter,defaultdict
+from collections import Counter
 from pathlib import Path
-from urllib.parse import urlparse
+from measurement_target_utils import expanded_target,effective_emergent_target
 
-DIMENSIONS=[("query_coverage",30,"泛词覆盖"),("entity_clarity",25,"实体清晰"),("external_diversity",20,"外部来源多样性"),("concept_ownership",15,"概念占位"),("freshness",10,"内容新鲜度")]
-TRUE={"1","true","yes","y","是"}
-
-def read_csv(p:Path):
+def rcsv(p:Path):
     if not p.is_file():return []
     with p.open("r",encoding="utf-8-sig",newline="") as f:return list(csv.DictReader(f))
-def num(v,default=0.0):
+def rjson(p:Path,default):
+    if not p.is_file():return default
+    return json.loads(p.read_text(encoding="utf-8"))
+def rjsonl(p:Path):
+    if not p.is_file():return []
+    return [json.loads(line) for line in p.read_text(encoding="utf-8").splitlines() if line.strip()]
+def fnum(v):
     try:return float(v)
-    except:return default
-def split(v):
-    import re
-    return [x.strip() for x in re.split(r"[|｜;,，；]",v or "") if x.strip()]
-def domain(url):return urlparse(url or "").netloc.lower().removeprefix("www.")
+    except:return 0.0
 
-def recall_map(queries,results,target="institution"):
-    qids={q.get("query_id") for q in queries if q.get("query_purpose")=="measurement" and q.get("measurement_target")==target and q.get("status")=="sampled"}
-    hits=defaultdict(set)
-    for r in results:
-        if r.get("query_id") in qids and r.get("matched","").lower() in TRUE and r.get("counts_as_measurement_hit","").lower() in TRUE and r.get("entity_id"):
-            hits[r["entity_id"]].add(r["query_id"])
-    den=len(qids)
-    return {eid:(len(v),den,(len(v)/den if den else 0.0)) for eid,v in hits.items()},den
+PROTOCOL_KEYS=("measurement_profile","sampling_mode","answer_context_mode_expected","context_isolation_level","query_variant_mode","repeat_runs_expected","fresh_context_required","fresh_context_note","page_collection_status","observation_date","ai_engines_sampled","ai_engine_notes")
 
-def derive_route(score,recall,authority,owned_ratio):
-    route=(score.get("competition_route") or "").strip()
-    if route and route not in {"待归纳","unknown","n/a","N/A"}:return route
-    total=num(score.get("total"));rec=recall;auth=authority
-    if rec>=.65 and auth>=60:return "成熟占位型"
-    if rec>=.65 and owned_ratio>=.60:return "SEO/自有资产占位型"
-    if rec<.35 and auth>=60:return "高权威低召回型"
-    if rec>=.40 and auth<45:return "主动铺量型"
-    if total>=70:return "全国品牌权重型"
-    if rec<.35:return "本地实体待扩召回型"
-    return "本地实体型"
 
-def dimension_summary(score,details):
-    dims=(details or {}).get("dimensions",{}) if isinstance(details,dict) else {}
-    values=[]
-    for field,maxv,label in DIMENSIONS:
-        raw=num(score.get(field));pct=raw/maxv if maxv else 0
-        reason=(dims.get(field) or {}).get("reason","") if isinstance(dims,dict) else ""
-        values.append((pct,label,reason,raw,maxv))
-    hi=max(values,key=lambda x:x[0]);lo=min(values,key=lambda x:x[0])
-    strongest=f"{hi[1]} {hi[3]:g}/{hi[4]}"+(f"：{hi[2]}" if hi[2] else "")
-    gap=f"{lo[1]} {lo[3]:g}/{lo[4]}"+(f"：{lo[2]}" if lo[2] else "")
-    return strongest,gap
+def build_protocol(meta:dict,answers:list):
+    proto={k:meta.get(k,"") for k in PROTOCOL_KEYS}
+    stamps=sorted({str(a.get("sampled_at") or "") for a in answers if a.get("sampled_at")})
+    proto["sampled_at_range"]=(f"{stamps[0]} → {stamps[-1]}" if stamps else "")
+    proto["answer_cells"]=len(answers)
+    proto["declarations"]=[]
+    if str(meta.get("sampling_mode") or "")=="single-engine":proto["declarations"].append("本轮为单引擎测量，不得表述为跨模型共识。")
+    if str(meta.get("answer_context_mode_expected") or "")=="external-search-augmented":proto["declarations"].append("本轮为外部检索增强条件下的 AI Answer Visibility，不等同模型原生参数记忆 Recall。")
+    if str(meta.get("context_isolation_level") or "")=="programmatic":proto["declarations"].append("本轮仅实现程序性 fresh context，无法证明达到 API 级物理上下文重置。")
+    if str(meta.get("query_variant_mode") or "")=="semantic-retrieval-variants":proto["declarations"].append("本轮使用语义等价检索变体，稳定性指标只能解释为 Query/Retrieval Robustness。")
+    if str(meta.get("page_collection_status") or "")!="collected":proto["declarations"].append("本轮未采集网页正文，空的 page mention 表示未采集，不代表正文 0 提及。")
+    return proto
 
-def source_dependency(scores,entities,evidence):
-    emap={e.get("entity_id"):e for e in entities};by=defaultdict(list)
-    for e in evidence:
-        if e.get("counting_scope","").lower()!="ignored":by[e.get("entity_id")].append(e)
-    out={}
-    for s in scores:
-        eid=s.get("entity_id");official=(emap.get(eid) or {}).get("official_domain","").lower().removeprefix("www.");rows=by[eid]
-        own=sum(1 for e in rows if official and domain(e.get("source_url"))==official)
-        out[eid]=round(own/len(rows),4) if rows else 0.0
-    return out
+
+def build_robustness(run:Path):
+    return rjson(run/"robustness_summary.json",{})
+
+
+def build_risks(analysis:dict,meta:dict,protocol:dict):
+    risks=list(analysis.get("limitations") or [])
+    for d in protocol.get("declarations") or []:
+        if d not in risks:risks.append(d)
+    return risks
+
 
 def build(run:Path):
-    meta=json.loads((run/"run_metadata.json").read_text(encoding="utf-8"));scores=read_csv(run/"scores.csv");candidates=read_csv(run/"candidate_pool.csv");entities=read_csv(run/"entities.csv");queries=read_csv(run/"queries.csv");results=read_csv(run/"query_results.csv");evidence=read_csv(run/"evidence.csv");ips=read_csv(run/"ip_entities.csv");coverage=read_csv(run/"discovery_coverage.csv")
-    try:details=json.loads((run/"score_details.json").read_text(encoding="utf-8"))
-    except Exception:details=[]
-    dmap={x.get("entity_id"):x for x in details if isinstance(x,dict)} if isinstance(details,list) else {}
-    emap={e.get("entity_id"):e for e in entities};inst_ids={r.get("entity_id") for r in entities if r.get("entity_type") in {"institution","brand"}}
-    unique_inst={r.get("entity_id") for r in candidates if r.get("entity_id") in inst_ids};evaluable={r.get("entity_id") for r in candidates if r.get("entity_id") in inst_ids and r.get("status") in {"scored","evidence-insufficient"}}
-    inst_recall,inst_den=recall_map(queries,results,"institution");ip_recall,ip_den=recall_map(queries,results,"ip")
-    top=sorted(scores,key=lambda r:num(r.get("total")),reverse=True);status=Counter(r.get("status") for r in candidates);dep=source_dependency(scores,entities,evidence)
-    scorecards=[];ranking=[]
-    for i,r in enumerate(top,1):
-        eid=r.get("entity_id");hits,den,rec=inst_recall.get(eid,(0,inst_den,0.0));auth=num(r.get("authority_index"));strong,gap=dimension_summary(r,dmap.get(eid));route=derive_route(r,rec,auth,dep.get(eid,0))
-        ranking.append({"rank":i,"entity_id":eid,"institution":r.get("institution"),"total":num(r.get("total")),"tier":r.get("tier"),"confidence":r.get("evidence_confidence"),"recall_hits":hits,"recall_queries":den,"recall_rate":round(rec,4),"authority_index":auth,"owned_source_dependency_ratio":dep.get(eid,0),"competition_route":route})
-        scorecards.append({"entity_id":eid,"institution":r.get("institution"),"total":num(r.get("total")),"tier":r.get("tier"),"route":route,"strongest_asset":strong,"largest_gap":gap,"recall_rate":round(rec,4),"authority_index":auth,"owned_source_dependency_ratio":dep.get(eid,0)})
-    observation=[]
-    for c in candidates:
-        if c.get("status") not in {"evidence-insufficient","unresolved"}:continue
-        eid=c.get("entity_id");e=emap.get(eid,{})
-        missing=[]
-        if not e.get("legal_name"):missing.append("工商/法律主体")
-        if not e.get("official_domain"):missing.append("官网域名")
-        if not e.get("official_account"):missing.append("官方账号")
-        observation.append({"entity_id":eid,"name":c.get("display_name") or e.get("canonical_name"),"candidate_type":c.get("candidate_type"),"status":c.get("status"),"user_specified":c.get("user_specified","").lower() in TRUE,"missing":missing,"reason":c.get("notes") or c.get("exclusion_reason") or ("证据不足，未进入正式评分" if c.get("status")=="evidence-insufficient" else "实体尚未完成解析")})
-    ip_rows=[]
-    for ip in ips:
-        eid=ip.get("entity_id","");hits,den,rec=ip_recall.get(eid,(int(num(ip.get("ip_hits"))),ip_den,num(ip.get("ip_recall"))))
-        if den==0:den=int(num(ip.get("ip_queries")));rec=(hits/den if den else num(ip.get("ip_recall")))
-        ip_rows.append({"entity_id":eid,"teacher_name":ip.get("teacher_name"),"institution":ip.get("institution"),"ip_hits":hits,"ip_queries":den,"ip_recall":round(rec,4),"subjects":ip.get("subjects",""),"platforms":ip.get("platforms",""),"concepts":ip.get("concepts",""),"evidence_confidence":ip.get("evidence_confidence",""),"source_ids":split(ip.get("source_ids",""))})
-    ip_rows.sort(key=lambda x:(x["ip_recall"],x["ip_hits"]),reverse=True)
-    for i,row in enumerate(ip_rows,1):row["rank"]=i
-    query_audit=[]
-    for q in queries:
-        if q.get("query_purpose")!="measurement" or q.get("measurement_target")!="institution" or q.get("status")!="sampled":continue
-        qid=q.get("query_id");matched={r.get("entity_id") for r in results if r.get("query_id")==qid and r.get("matched","").lower() in TRUE and r.get("counts_as_measurement_hit","").lower() in TRUE and r.get("entity_id")}
-        query_audit.append({"query_id":qid,"query_text":q.get("query_text"),"theme":q.get("theme"),"matched_entities":len(matched)})
-    assets=["run_metadata.json","discovery_coverage.csv","candidate_pool.csv","entities.csv","entity_relations.csv","queries.csv","query_results.csv","evidence.csv","scores.csv","score_details.json","ip_entities.csv","charts/chart_data.json"]
-    model={"schema_version":"2.1.1","meta":meta,"title":f"{meta.get('observation_date','')} {meta.get('normalized_region') or meta.get('requested_region','')}公考 GEO 竞争格局深度报告".strip(),"subtitle":"生成式搜索环境下的品牌可见性 · 实体资产 · 答案占位 · 竞争机会","kpis":{"independent_institutions":len(unique_inst),"evaluable_institutions":len(evaluable),"scored_institutions":len(scores),"institution_measurement_queries":inst_den,"ip_measurement_queries":ip_den,"evidence_count":len(evidence),"entity_nodes":len(entities),"ip_entities":len(ips),"observation_entities":len(observation)},"executive_summary":[],"ranking":ranking,"scorecards":scorecards,"diagnoses":[],"observation_group":observation,"ip_measurement":{"executed":ip_den>0,"query_count":ip_den,"rows":ip_rows,"note":"IP Measurement 与机构总榜分离，不使用机构五维总分。" if ip_den else "本次未执行 IP Measurement，仅作 Expert Entity 观察。"},"query_occupancy":query_audit,"concept_gaps":[],"entry_strategy":[],"plan_90_days":[],"monthly_dashboard":[],"charts":{"ranking":"charts/geo-score-ranking.svg","authority_recall":"charts/authority-recall-matrix.svg","heatmap":"charts/dimension-heatmap.svg","funnel":"charts/candidate-funnel.svg"},"appendix":{"candidate_status":dict(status),"candidate_status_note":"所有 evidence-insufficient / unresolved 主体必须在观察组披露，不得静默消失。","research_assets":assets,"research_audit":{"sampling_mode":meta.get("sampling_mode","public-web-proxy"),"semantic_coverage_gate":bool(meta.get("semantic_coverage_gate")),"saturation_gate":bool(meta.get("saturation_gate")),"local_ecosystem_gate":bool(meta.get("local_ecosystem_gate")),"candidate_pool_frozen":bool(meta.get("candidate_pool_frozen")),"coverage_rows":len(coverage),"institution_measurement_queries":inst_den,"ip_measurement_queries":ip_den,"evidence_count":len(evidence)},"query_results_summary":{"measurement_rows":len(query_audit),"result_rows":len(results)}}}
-    if top:
-        lead=top[0];model["executive_summary"].append(f"本次公开网络代理观察中，{lead.get('institution')} 的 GEO 观察指数最高，为 {lead.get('total')}（{lead.get('tier')}）。该结论仅反映本次公开网络与 AI 可利用资产结构，不代表教学质量或市场份额。")
-    model["executive_summary"].append(f"本次共发现 {len(unique_inst)} 家独立机构候选，其中 {len(scores)} 家进入正式评分，{len(observation)} 家/主体进入证据不足或未解析观察组；机构 Measurement 共 {inst_den} 个无品牌问题。")
-    if ip_den:model["executive_summary"].append(f"本次同时执行 {ip_den} 个 IP Measurement 问题，识别 {len(ip_rows)} 个 Expert/IP 实体；IP 结果单独展示，不与机构总榜混算。")
-    path=run/"report_model.json";path.write_text(json.dumps(model,ensure_ascii=False,indent=2)+"\n",encoding="utf-8");return model
+    meta=rjson(run/"run_metadata.json",{});u=rcsv(run/"market_universe.csv");emergent_rows=rcsv(run/"ai_emergent_entities.csv");metrics=rcsv(run/"ai_metrics.csv");mentions=rcsv(run/"ai_mentions.csv");assets=rcsv(run/"asset_scores.csv");concepts=rcsv(run/"concept_ownership.csv");evidence=rcsv(run/"evidence.csv");rechecks=rcsv(run/"rechecks.csv");resolution_rechecks=rcsv(run/"resolution_rechecks.csv");analysis=rjson(run/"analysis.json",{});answers=rjsonl(run/"ai_answers.jsonl")
+    included=[x for x in u if x.get("universe_status")=="included"];observation=[x for x in u if x.get("universe_status") in {"observation","unresolved"}]
+    groups={"national_benchmarks":[],"local_institutions":[],"expert_ip":[],"other_included":[]}
+    for x in included:
+        role=x.get("market_role");scope=x.get("market_scope")
+        if role=="national-benchmark":groups["national_benchmarks"].append(x)
+        elif role=="expert-ip":groups["expert_ip"].append(x)
+        elif role in {"local-core","local-active"} and scope in {"local","regional"}:groups["local_institutions"].append(x)
+        else:groups["other_included"].append(x)
+
+    m_by={(x.get("entity_id"),x.get("measurement_target")):x for x in metrics};a_by={x.get("entity_id"):x for x in assets}
+    def preferred_target(row,group_name):
+        declared=row.get("measurement_target") or ""
+        if declared=="both":return "ip" if group_name=="expert_ip" else "institution"
+        return declared if declared in {"institution","ip"} else ("ip" if group_name=="expert_ip" else "institution")
+    def merge_rows(rows,group_name):
+        out=[]
+        for x in rows:
+            y=dict(x);eid=x.get("entity_id");declared=x.get("measurement_target") or "";targets=expanded_target(declared)
+            target_metrics={t:m_by.get((eid,t),{}) for t in targets};pt=preferred_target(x,group_name);metric=target_metrics.get(pt) or {}
+            y.update({k:v for k,v in metric.items() if k not in y or not y.get(k)});y["measurement_target_for_report"]=pt;y["target_metrics"]=target_metrics
+            asset=a_by.get(eid) or {};y["asset_readiness"]=asset.get("asset_readiness","");y["asset_tier"]=asset.get("asset_tier","");y["owned_source_dependency"]=asset.get("owned_source_dependency","");out.append(y)
+        return sorted(out,key=lambda r:(-fnum(r.get("nomination_rate")),-fnum(r.get("top3_rate")),r.get("canonical_name","") or ""))
+    grouped={k:merge_rows(v,k) for k,v in groups.items()};obs_merged=merge_rows(observation,"observation")
+    ai_visible_observation=[r for r in obs_merged if any(fnum(m.get("nomination_rate"))>0 for m in (r.get("target_metrics") or {}).values())]
+
+    resolved_emergent=[];unresolved_emergent=[]
+    for e in emergent_rows:
+        x=dict(e);declared=effective_emergent_target(e);targets=expanded_target(declared);target_metrics={t:m_by.get((e.get("entity_id"),t),{}) for t in targets}
+        # Emergent entities are disclosed separately. For compact table sorting, use the highest observed target metric, while preserving every target in target_metrics.
+        metric=max(target_metrics.values(),key=lambda m:fnum(m.get("nomination_rate"))) if target_metrics else {}
+        x.update({k:v for k,v in metric.items() if k not in x or not x.get(k)});x["universe_status"]="ai-emergent";x["measurement_target_for_report"]=declared;x["target_metrics"]=target_metrics
+        asset=a_by.get(e.get("entity_id")) or {}
+        x["asset_readiness"]=asset.get("asset_readiness","");x["asset_tier"]=asset.get("asset_tier","");x["owned_source_dependency"]=asset.get("owned_source_dependency","")
+        (resolved_emergent if e.get("resolution_status")=="resolved" else unresolved_emergent).append(x)
+    ai_visible_emergent=sorted([r for r in resolved_emergent if any(fnum(m.get("nomination_rate"))>0 for m in (r.get("target_metrics") or {}).values())],key=lambda r:(-max([fnum(m.get("nomination_rate")) for m in (r.get("target_metrics") or {}).values()] or [0]),r.get("canonical_name","") or ""))
+    engines=sorted({x.get("engine","") for x in answers if x.get("engine")});disagreements=[x for x in rechecks if x.get("disagreement","").lower() in {"1","true","yes","y","是"}];resolved=[x for x in disagreements if x.get("resolution","").strip()]
+    intent_distribution=dict(sorted(Counter((m.get("mention_intent") or "").strip() for m in mentions if (m.get("mention_intent") or "").strip()).items()))
+    positive_mentions=sum(intent_distribution.get(x,0) for x in ("recommended","listed"));resolution_risk_count=len(resolution_rechecks);resolution_confirmed=sum((r.get("review_status") or "")=="confirmed" for r in resolution_rechecks)
+    title_region=meta.get("normalized_region") or meta.get("requested_region") or "地区";title=(f"{title_region}公考 GEO 竞争格局深度报告" if meta.get("research_mode")!="blind-discovery-scan" else f"{title_region}公考 GEO 公开网络发现扫描")
+    protocol=build_protocol(meta,answers);robustness=build_robustness(run);risks=build_risks(analysis,meta,protocol)
+    summaries=list(analysis.get("executive_summary") or [])
+    if not summaries:
+        summaries.append(f"本次 Market Universe 共确认 {len(included)} 个正式研究主体，其中全国基准 {len(grouped['national_benchmarks'])} 个、本地/区域机构 {len(grouped['local_institutions'])} 个、Expert/IP {len(grouped['expert_ip'])} 个。")
+        if engines:summaries.append(f"AI Answer Measurement 覆盖 {len(engines)} 个引擎/模型入口；提名率、Top3率和首提率均按显式 measurement_target 分母计算。")
+        else:summaries.append("本次未形成可用 AI Answer Measurement，因此只能解释 GEO Asset Readiness。")
+        if meta.get("query_variant_mode")=="semantic-retrieval-variants":summaries.append("本轮采用语义等价检索变体，稳定性指标解释为 Query/Retrieval Robustness，不等同于严格同条件随机重复。")
+        if meta.get("context_isolation_level")=="programmatic":summaries.append("本轮仅实现程序性 fresh context，无法等同于 API 级物理上下文隔离；相关排名结论需保守解释。")
+        if ai_visible_observation:summaries.append(f"另有 {len(ai_visible_observation)} 个 Stage 1 Observation 主体在真实 AI 回答中获得提名，已单独披露。")
+        if ai_visible_emergent:summaries.append(f"AI Answer 自然带出 {len(ai_visible_emergent)} 个 Stage 1 Universe 外已解析主体，单独披露且不回写主榜。")
+    model={
+        "schema_version":"2.2","skill_version":"2.2","title":title,"subtitle":"Market Universe × AI Answer Measurement × GEO Asset Readiness","meta":meta,
+        "kpis":{"included_entities":len(included),"national_benchmarks":len(grouped["national_benchmarks"]),"local_institutions":len(grouped["local_institutions"]),"expert_ip":len(grouped["expert_ip"]),"observation_entities":len(observation),"ai_visible_observation_entities":len(ai_visible_observation),"ai_emergent_entities":len(emergent_rows),"ai_visible_emergent_entities":len(ai_visible_emergent),"ai_engines":len(engines),"evidence_count":len(evidence),"definitions":{"included_entities":"经 Market Universe Confirmation 纳入正式研究的全部主体","national_benchmarks":"included 且 market_role=national-benchmark","local_institutions":"included 且 market_role=local-core/local-active 且 scope=local/regional；不再由 entity_type 重分组","expert_ip":"included 且 market_role=expert-ip；不再由 studio/person 类型自动重分组","observation_entities":"Stage 1 未进入正式比较、但仍保留 AI Measurement 的 observation/unresolved 主体","ai_visible_observation_entities":"Observation 中至少一个显式 measurement_target 获得正向提名的主体","ai_emergent_entities":"正式 Measurement 中由 AI 回答自然带出的 Universe 外主体","ai_visible_emergent_entities":"已解析并形成 AI Metrics 的 AI-emergent 主体"}},
+        "executive_summary":summaries,"measurement_protocol":protocol,"market_universe":grouped,"observation_group":obs_merged,"ai_visible_observation":ai_visible_observation,"ai_emergent_entities":resolved_emergent+unresolved_emergent,"ai_visible_emergent":ai_visible_emergent,
+        "ai_visibility":{"national_benchmarks":grouped["national_benchmarks"],"local_institutions":grouped["local_institutions"],"expert_ip":grouped["expert_ip"],"other":grouped["other_included"]},
+        "robustness":robustness,"asset_readiness":sorted(assets,key=lambda r:fnum(r.get("asset_readiness")),reverse=True),"concept_map":concepts,
+        "measurement_qa":{"annotation_intent_distribution":intent_distribution,"positive_mentions":positive_mentions,"resolution_recheck_rows":resolution_risk_count,"resolution_recheck_confirmed":resolution_confirmed},
+        "diagnoses":analysis.get("diagnoses",[]),"strategy":analysis.get("strategy",[]),"plan_90_days":analysis.get("plan_90_days",[]),"risks":risks,
+        "charts":{"universe":"charts/market-universe.png","national_visibility":"charts/ai-visibility-national.png","local_visibility":"charts/ai-visibility-local.png","ip_visibility":"charts/ai-visibility-ip.png","asset_readiness":"charts/asset-readiness.png","concept_ownership":"charts/concept-ownership.png"},
+        "appendix":{"recheck":{"rows":len(rechecks),"disagreements":len(disagreements),"resolved_disagreements":len(resolved)},"resolution_recheck":{"rows":resolution_risk_count,"confirmed":resolution_confirmed},"annotation_intent_distribution":intent_distribution,"research_assets":[x.name for x in run.iterdir() if x.is_file()],"methodology_notes":["User Seed 只保证研究，不影响任何 AI/资产指标。","Market Scope 不能由 Recall 反推。","Market Bucket 与 Measurement Target 是两条独立轴，Stage 2/3 不得用 entity_type 重写 Stage 1 分桶。","Hybrid entity（含 reviewed AI-emergent hybrid）可 measurement_target=both，并分别保留 institution/IP 指标。","AI Answer Measurement 与 Open-Web SERP/页面提及物理分离。","Annotation Review 与 Entity Resolution Recheck 分离。","Observation / unresolved 主体仍保留 AI Metrics。","公开网页用于解释 GEO 资产，不替代真实 AI 提名。","Asset Readiness 只统计可核验公开证据；未取到证据的维度记为 unknown，不得解释为主体一定没有。","Concept Ownership 只来自可核验公开内容绑定，单次偶发提及不得包装为强绑定。","GEO 不代表教学质量、通过率、招生量、市场份额或一般口碑。"]}}
+    (run/"report_model.json").write_text(json.dumps(model,ensure_ascii=False,indent=2)+"\n",encoding="utf-8");return model
 
 def main():
     p=argparse.ArgumentParser();p.add_argument("run_dir",type=Path);a=p.parse_args();build(a.run_dir);print(a.run_dir/"report_model.json");return 0

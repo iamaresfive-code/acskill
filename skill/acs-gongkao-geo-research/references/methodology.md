@@ -1,288 +1,184 @@
-# 公考机构 GEO 调研方法论 v2.1
+# 公考 GEO 调研方法论 v2.2
 
 ## 1. 研究定义
 
-GEO 指机构、品牌或老师/IP 在生成式 AI、AI 搜索及传统搜索与生成式搜索融合环境中，被系统发现、理解、确认、召回和引用的能力。
+v2.2 将 GEO 拆成两个不能混淆的对象：
 
-默认采样模式为 `public-web-proxy`：调查公开可检索、可抓取、可复核的网页资产，构建 GEO 可见性代理指标。它不等于特定模型在特定时刻的真实答案。
+- **AI Answer Visibility**：固定无品牌问题下，AI 实际是否提名、Top3、首提、引用、跨引擎/变体表现；
+- **GEO Asset Readiness**：公开互联网和平台资产是否让机器容易识别、理解、确认和引用主体。
 
-只有对多个生成式搜索引擎使用同一题池并保存原始回答与时间，才可另列 `multi-engine sampling`。两类结果必须分开呈现。
+前者回答“实际上被提到多少”；后者回答“为什么可能被提到”。
 
-任何报告都必须声明：GEO 观察指数不代表教学实力、市场份额、经营规模、真实口碑、学员效果或大模型官方推荐榜。
+## 2. Market Universe 先于 Measurement
 
-## 2. Preflight 先于 Research Run
+Universe = User Seed + System Discovery + Entity/Market Salience Review + User Confirmation。Seed 只保证必须研究/解析，不保证 included，不加分。
 
-v2.1 在研究前必须确认：
+市场重要性与网页可见性分离：SEO 强不自动等于当地市场重要；私域/平台强也不应因开放网页弱而被直接排除。
 
-- 地区
-- 指定关注主体决定
-- 正式输出格式
+## 3. Market Bucket 与 Measurement Target 是两条独立轴
 
-这三个参数影响范围、强制召回和 Renderer，因此属于 Research Contract，而不是普通备注。
+Market Bucket 由 Stage 1 冻结：A National Benchmark / B Local-Regional / C Expert-IP / D Observation-Other。
 
-## 3. Candidate Discovery：从 Channel Coverage 升级到 Semantic Coverage
+`measurement_target` 必须显式审定为：
+- institution
+- ip
+- both
 
-v2.0 的六路 Discovery 保留：user-query、exam-vertical、institutional、platform、expert-ip、entity-alias。
+`both` 用于机构品牌入口与个人/IP入口同时成立的 Hybrid/IP-led Brand。同一主体可以 `market_role=local-active + measurement_target=both`，但 Stage 2/3 不能据此把它从 B 桶改进 C 桶。
 
-v2.1 增加一个更重要的约束：**渠道执行过，不代表关键语义已经覆盖。**
+Target Review 不能再把 `entity_type=studio/person` 当答案。`prepare_measurement_target_audit.py` 会提供 organization/IP/cross-target 信号，`hybrid_signal` 只强制 Reviewer 审视，不自动赋值 both；Reviewer 必须写 evidence_basis，hybrid 行还必须写 reviewer_reason。
 
-研究者先建立当地考试生态，再形成 Semantic Theme Map。每个 required theme 在 `discovery_coverage.csv` 中都必须有真实查询和复核状态。
+## 4. Measurement Context
 
-Semantic Coverage 的判断对象是“当地重要问题空间”，不是“搜索引擎按钮是否点过”。
+每个 Run 固定一种 `answer_context_mode`：native / engine-native-search / external-search-augmented。第三种只能称“外部检索增强下的 AI Answer Visibility”，不能称模型原生 Recall。
 
-## 4. Candidate Freeze 双门禁
+Context Isolation 分为：api-isolated / product-isolated / programmatic。`programmatic` 必须显著披露残余上下文污染风险。
 
-### Gate A：Semantic Coverage Gate
+## 5. Exact Repeat 与 Semantic Retrieval Variant 不得混淆
 
-全部 required theme 必须 `covered|no-result-reviewed`。以下典型方向不得明显缺失：
+`exact-query-repeat` 用于同一 canonical query 原样重复；`semantic-retrieval-variants` 用于语义等价检索式变体，测的是 Query/Retrieval Robustness。
 
-- 当地主要公务员 / 公职考试类型
-- Institutional Source
-- Platform
-- Expert/IP
-- Entity Alias
+新采样必须把 `query_variant_id` 原生记录进每个 Answer Cell。
 
-### Gate B：Saturation Gate
+### 5.1 Legacy Variant Sidecar
 
-目标是验证 Candidate Recall 已明显收敛。默认接受以下任一信号：
+历史 Run 如果采样时还没有 `query_variant_id`，**不得为通过新版 Validator 改写冻结的 `ai_answers.jsonl`**。应运行：
 
-- 最新补漏轮新增率 <10%；
-- 最新补漏轮新增可评估独立机构 <=1；
-- 连续两轮无重要新增主体。
-
-数据量很小时允许合理工程化调整，但必须在 Run Metadata / Audit 中解释。不能使用“第二轮低于 35% 就自动饱和”的旧式高阈值。
-
-## 5. Query 三分法保持严格隔离
-
-### Discovery
-
-找对象、别名、公司、老师、关系、平台线索；不进入 Recall。
-
-### Institution Measurement
-
-全体可评分机构共享同一无品牌题池：
-
-```text
-query_type=generic
-query_purpose=measurement
-measurement_target=institution
-status=sampled
+```bash
+python3 scripts/prepare_answer_variant_manifest.py <run-dir>
 ```
 
-只有这类 Query 进入机构泛词分母。
+生成 `answer_variant_manifest.csv`。原生记录标 `native-recorded`；按历史 sample_run + run-level variant mode 恢复的迁移侧写标 `legacy-reconstructed`。
 
-### IP Measurement
+`legacy-reconstructed` 只能说明“当前能够审计地恢复 variant 身份”，不能事后声称“当时逐 Cell 已保存真实变体检索词”。Validator 与 Robustness 计算都接受 sidecar，但 raw/sidecar 冲突会报错。
 
-老师/IP 使用独立无品牌题池：
+## 6. Raw Mention 与 Positive Nomination 分离
 
-```text
-query_type=generic
-query_purpose=measurement
-measurement_target=ip
-status=sampled
+`mention_intent` 五分类：recommended / listed / comparison / caveat / excluded。
+
+正式正向 Nomination = explicit-name/verified-alias + resolved + entity_correct=true + recommended/listed。
+
+关键锚定：列表成员附带普通缺点仍是 listed；只有明确条件性弱推荐、降优先级、明显保留才是 caveat；明确否定/排除才是 excluded。
+
+Top3 与 First Mention 从独立 `nomination_rank` 派生，不从 raw mention 顺序或 SERP rank 推断。
+
+## 7. Annotation、Resolution、Citation 必须拆成三条审计链
+
+### 7.1 Annotation
+
+Intent Reviewer 只判 Mention/Intent/match/entity_correct；不重新决定冻结的 `resolution_status`，也**不负责 Citation**。
+
+`apply_annotation_labels.py` 会自动派生 nomination_rank/top3/first_mention，并主动把 citation 字段重置为空/false，防止旧引用在新 Intent 标注中被误继承或误删除。
+
+### 7.2 Resolution
+
+Entity Resolution 另做 Resolution Audit；unresolved raw mention 必须保留，但不得进入 Positive Metrics。
+
+### 7.3 Citation
+
+Citation Rate 是实体级指标，不能由“这个回答整体有 citations”推出，也不能在 Intent 重标时静默归零。
+
+正式链路：
+
+```bash
+python3 scripts/prepare_citation_audit.py <run-dir>
+# Reviewer 逐 mention 核对实体级引用
+python3 scripts/apply_citation_audit.py <run-dir>
 ```
 
-人物结果不进入机构总榜。
+`citation_audit.csv` 保存每个 mention 的原 Answer candidate refs、linked refs、link basis、review status。linked refs 必须真实存在于该 Answer Cell citations，并明确绑定实体/官方域/可识别该主体的页面。
 
-### Verification
+Release Run 只要 Answer Cells 存在 citations，就必须完成 `citation_audit.csv + citation_audit_summary.json`，并与 `ai_mentions.csv` 同步；否则 strict Validator fail。
 
-核验官网、法律主体、老师、课程、校区、关系、近期内容与外部来源；不进入 Query Coverage。
+## 8. Annotation Blind Recheck
 
-## 6. Entity Resolution
+Answer Cells >=10 时至少覆盖 20%。第二 Reviewer 可见冻结的 canonical entity/resolution_status，只复判 Mention/Intent/Positive Set/顺序。建议报告 Positive Set Agreement、Intent Exact Agreement、3-Class Agreement、Cohen's Kappa、confusion matrix。
 
-逐家建立：
+80% 等数只能作为 provisional engineering target，不是行业理论门槛。
 
-```text
-品牌
-→ 公司/组织主体
-→ 创始人
-→ 老师/专家
-→ 科目
-→ 考试类型
-→ 课程/产品
-→ 校区/基地
-→ 城市/区域
-→ 平台
-→ 外部引用
-```
+## 9. AI Metrics
 
-每条边记录证据和置信度。
+`ai_metrics.csv` 一行 = `entity_id × measurement_target`。Hybrid both 必须有 institution/ip 两行，分母禁止混合。
 
-用户指定的名称只是入口，必须尝试扩展 canonical / alias / legal / former / official domain / official account / teacher / parent brand / related entity。
+透明输出：Raw Mention Rate、Nomination Rate、Top3 Rate、First Mention Rate、Citation Rate、Engine Coverage Rate、Cross-model Consistency。单引擎时 Cross-model Consistency 必须 N.A.。
 
-同名、短别名、历史名必须人工可审计地消歧。禁止仅靠字符串相似度自动合并。
+## 10. Robustness
 
-## 7. 五维 GEO 观察指数
+`compute_variant_robustness.py` 产出：
+- positive_persistence_3of3_rate；
+- 0/N、1/N…N/N Hit Pattern；
+- Pairwise Positive-set Jaccard；
+- Exact Positive-set Match Rate。
 
-总分 100，权重不变。
+`positive_persistence_3of3_rate` 不是 Overall Repeat Stability，因为 0/N 稳定负例不在其分母。Semantic variants 下，这些是 Query/Retrieval Robustness 指标。
 
-### Query Coverage /30
+Robustness 必须使用 raw Answer 原生 `query_variant_id` 或审计 sidecar；禁止和 Validator 不一致的静默 `run-{sample_run}` fallback。
 
-只由 Institution Measurement 支持。
+## 11. Open-Web 分离
 
-参考锚点：
+`serp_results.csv` 一行一个真实 Result Item；`serp_mentions.csv` 只允许 title/snippet；`page_mentions.csv` 只记录打开正文后的提及。网页正文品牌不得回填为 SERP/AI Hit。
 
-- 0–5：几乎无品牌词外自然出现
-- 6–12：少量问题偶发出现
-- 13–18：覆盖多个组别但稳定性一般
-- 19–24：多数核心问题有可复核占位
-- 25–30：覆盖广、跨组稳定，形成明确 Query → Page 资产
+`page_collection_status=not-collected` 时空 page 表只表示未采集，不表示正文 0 提及。
 
-### Entity Clarity /25
+## 12. 来源与证据
 
-观察品牌、公司、地区、老师、科目、产品、考试类型、基地、联系方式等关系能否被机器稳定确认。
+A1 政府/高校/监管；A2 第一方官网/官方账号；B 稳定实名平台；C 营销榜单/聚合。C 类可证明语料存在，不足以单独证明本地市场地位。
 
-### External Diversity /20
+## 13. 报告解释纪律
 
-统计独立域名、跨平台来源、高质量第三方验证；同稿转载和站群必须去重。
+- Market Bucket 由 Stage 1 冻结；
+- Hybrid both 可有两套指标，但不能反向修改 Market Role；
+- 单引擎不得冒充跨模型共识；
+- external-search-augmented 不得表述为模型原生 Recall；
+- semantic-retrieval-variants 不得表述为纯模型重复稳定性；
+- legacy-reconstructed variant 必须披露为迁移侧写；
+- 数据低稳定时只能写“在本次协议下提名率最高/未形成正向召回”，禁止写“真实第一/所有 AI 都不认识/GEO 为零”；
+- 报告优先展示命中次数/分母与百分比。
 
-### Concept Ownership /15
+## 14. 测试可信度
 
-判断专业问题能否稳定指向某主体。宽泛的“某机构=公考培训”不算强占位。
+核心测试与 DOCX/图表集成测试必须区分。只有 `ImportError` 等真实第三方依赖缺失才允许 SKIP；AssertionError、Validator error、RuntimeError 等必须直接 FAIL / 非0退出，不能被宽泛 `except Exception` 伪装成 SKIP。
 
-### Freshness /10
+## 15. Release Gate
 
-以观察日为基准看近 30/90/180/365 天公开资产活跃度与准确性。
+Release Gate 关注**协议完整性与可审计性**：target、variant、context、annotation、citation、robustness、recheck、denominator 是否完整。30%/80% 等经验阈值在广东/天津/山东和多引擎数据校准前只作为 diagnostic，不硬编码成普适理论门槛。
 
-## 8. Authority × Recall
+## 16. GEO Asset Readiness：没有证据 ≠ 0 分
 
-v2.1 将“权威”和“自然召回”真正拆开。
+Asset Readiness 解释的是「公开资产是否让机器容易识别、理解、确认和引用该主体」，它**不是**教学质量、通过率、招生量、市场份额或口碑指标，也不能替代 AI Answer Visibility。
 
-横轴：
+七个维度（entity_clarity 25 / regional_semantic_density 20 / open_web_assets 15 / external_authority 15 / content_depth_freshness 10 / data_tool_assets 10 / platform_coverage 5）**只由可核验的公开证据算分**，换算表见 `data-schema.md` 第 18.2 节。
 
-```text
-Measurement Recall Rate = generic_hits / generic_queries
-```
+两条不可让步的纪律：
 
-纵轴：Evidence Authority Index，范围 0–100。
+1. **没有找到证据 ≠ 0 分。** 未取到证据的维度写 `unknown` 并登记进 `unknown_fields`，不计入分母；已证据化权重不足时 Tier 记 U（证据不足）。把「本次没搜到」写成「主体一定没有」是本层最严重的口径错误。
+2. **评分必须能从原始公开证据复算。** 每个数值维度都要能追到 `report_research_manifest.csv` 的具体证据行；只有 URL 经独立核验可达（HTTP 2xx，或被反爬拒绝但地址真实存在的 403/468/502）的证据才参与计分；404、域名不可达等不可核验行整行丢弃。
 
-建议透明计算：
+同时必须区分**可核验证据**与**未核验主张**：无 URL 的发现记录可以保留，但 `access_status` 只能记 `indexed-only`，且不参与任何计分。
 
-```text
-35% Source Grade Quality
-25% Independent Domain Diversity
-20% Key Relation Cross-validation
-10% Evidence Freshness
-10% Duplicate Quality
-```
+## 17. Concept Ownership：只能来自可核验的公开内容绑定
 
-推荐实现：
+概念绑定回答「哪个主体在公开内容中与哪个概念形成了可复核的关联」。它不得来自品牌名、行业常识、Reviewer 印象或 AI 回答中的共现。
 
-- Source Grade Quality：A1=1.0、A2=0.75、B=0.5、C=0.2 的证据均值；
-- Independent Domain Diversity：独立域名数按 0/1/2/3/4+ 映射为 0/0.35/0.6/0.8/1；
-- Key Relation Cross-validation：关键品牌/公司/老师关系中，被两个及以上独立来源支持的比例；无法计算时按 0；
-- Evidence Freshness：近 365 天有效证据占比；
-- Duplicate Quality：被计入的 evidence 中 `counting_scope!=ignored` 且无未处理重复告警的比例。
+每条绑定必须区分绑定类型，并遵守对应强度区间：
 
-Authority Index 与 GEO Score 不是同一个分数，不能直接把 GEO 总分当作纵轴。
+| binding_type | 含义 | strength |
+|---|---|---|
+| owned-declaration | 品牌在自有官网/官方账号主动宣称的定位与业务 | 8–10 |
+| high-frequency-public-binding | 多个独立公开页面高频把该概念与主体绑定 | 6–8 |
+| third-party-description | 第三方页面描述其专注于某概念 | 3–5 |
+| single-incidental-mention | 仅在单次提及中出现 | 1–2 |
 
-四象限：
+**单次第三方提及不得包装成强 Concept Ownership。**
 
-- 右上：成熟占位型
-- 左上：高权威低召回型
-- 右下：主动铺量型
-- 左下：基础薄弱型
+## 18. Report Layer 的五层表述纪律
 
-象限阈值可以使用本 Run 中位数或透明固定阈值，但报告必须说明。
+`analysis.json` 必须把事实、指标、代理指标、推断、建议分开记录，并且：
 
-## 9. IP / Expert GEO
+- GEO Visibility 指标只能表述为「本次协议下的可见度」，**禁止写成真实市场份额或市场排名**；
+- Asset Readiness 是公开资产代理，Concept Ownership 是内容绑定代理，两者都不构成市场地位判断；
+- 所有统计数字必须由脚本从最终持久化产物实算，不得手抄中间统计，避免 QA 修正后报告仍停留在旧版本。
 
-如果 Run 执行了 IP Measurement，可报告 IP Recall、Entity Confidence、Institution Relation、Subject Binding、Concept Ownership、Evidence Health。
+## 19. Report Layer 门禁纪律
 
-人物粉丝量、播放量只作代理指标，不能直接提高机构总分或证明教学质量。
-
-如果 `ip_queries=0`，只能写“IP实体 / 专家可见性观察”。
-
-## 10. Candidate Discovery 漏斗
-
-Main Report 用漏斗向普通读者解释研究完整度：
-
-```text
-候选记录
-↓
-独立机构候选
-↓
-具备评估条件
-↓
-正式评分
-```
-
-旁边列证据不足、merged、excluded、unresolved。
-
-注意：Entity Graph Node 数量与“机构数量”严格区分。
-
-## 11. 竞争路线
-
-基于真实资产结构自动归纳，不参与评分。候选标签：
-
-- 品牌权重型
-- 知识基础设施型
-- Query进攻型
-- Expert/IP型
-- 平台托管型
-- Institutional Authority型
-- 高权威低召回型
-- 本地实体型
-
-一机构可以主标签 + 副标签。路线判断必须可由 scores / evidence / query_results / entity_relations 回溯。
-
-## 12. Concept / Gap
-
-从实际 Measurement 的弱结果、无结果、默认答案集中度、同名污染、实体关系断裂中识别：
-
-- 已占领概念
-- 竞争中概念
-- 无稳定占位概念
-- 数据资产型机会
-- IP型机会
-- 地区/区县机会
-- 考试垂类机会
-
-不能把“没有搜索量数据的普通关键词”包装成确定商业机会。
-
-## 13. 区域进入策略与 90 天工程
-
-地区深度报告必须把 Gap 翻译成进入顺序：
-
-- 哪些红海不要正面打
-- 哪些 Gap 先抢
-- 先做实体还是内容
-- 先做哪个考试细分
-- 如何建立第三方 Evidence
-- 如何建立 Expert Entity
-
-90 天计划必须分阶段并与本次 Gap 强关联：
-
-- 0–30 天：Entity Engineering / Regional Query Tree
-- 31–60 天：Knowledge Infrastructure / Expert Entity
-- 61–90 天：Third-party Evidence
-- 持续：Measurement Re-test / Query Attack
-
-每阶段写目标、动作、为什么有效、验收指标。
-
-## 14. 月度监测
-
-建议核心 KPI：
-
-- 无品牌召回率
-- 首提率
-- 引用率
-- 正确实体率
-- 可引用 Evidence 数
-- 权威页面数
-- 概念绑定稳定度
-- 错误信息率
-
-“文章数量”不能作为核心 KPI。
-
-## 15. 时间窗口与可比性
-
-历史比较只有在样本、题池、评分口径、采样环境和时间窗口可比时才计算变化；否则并列展示。
-
-“本次未检索到”只表示本次范围内未发现，不等于互联网绝对不存在。
-
-## 16. 防过拟合
-
-生产逻辑不得写死天津、津仕、北宋、天津考试结构。这些案例只能出现在 fixture / smoke test。
-
-至少用一个本土/IP活跃市场和一个全国品牌占主导的普通省级市场回归 Semantic Discovery 适配能力。
+报告层必须与 Measurement 层同等对待：**空壳报告不得通过 strict**。`validate_run.py --stage report --strict` 必须对空 `asset_scores` / `concept_ownership` / `analysis.json`、空的 `diagnoses` / `strategy` / `plan_90_days` / `risks`、缺失或正文为空的核心章节、缺失的图表引用全部报错；渲染器本身在关键结构为空时必须直接失败退出，不得用占位文案兜底。

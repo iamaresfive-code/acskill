@@ -1,210 +1,141 @@
-# acs-gongkao-geo-research v2.1.1
+# acs-gongkao-geo-research v2.2
 
-> 公考行业 GEO 竞争研究与咨询报告 Skill
+> 公考行业 GEO 竞争研究 Skill：先确认研究谁，再测 AI 到底提不提，最后用公开资产解释原因。
 
-如果你第一次接触 GEO，可以把它理解成：
+正式输出固定为 Word：`deliverables/report.docx`。
 
-**调查一个公考机构、品牌或老师/IP，在 AI 搜索与生成式搜索环境里是否容易被找到、能不能被机器正确理解、在用户没有输入品牌名时是否会自然出现、公开证据是否足够稳定。**
+## 核心结构
 
-它不是“教学最好排行榜”，也不是“谁家上岸率最高”。
+1. **Market Universe**：User Seed + 系统发现 + 市场显著性审核；
+2. **AI Answer Measurement**：固定无品牌题真实采样；
+3. **GEO Asset Readiness**：公开资产解释层。
 
-## v2.1.1 为什么要升级
-
-v2.1 在全新广东环境实测后暴露出一个很典型的问题：全国品牌容易被找到，但一些真实存在、在本地市场有影响力的机构和老师/IP 可能没有进入最终报告；上游即使测过 IP，也可能因为 Report Model / Renderer 没消费数据而只剩一句“本次已执行 IP Measurement”。同时 HTML 把固定 A4 宽度直接套在浏览器，宽 SVG 和长表格容易出现错位、拥挤或横向溢出。
-
-v2.1.1 不是给本土机构“抬分”，而是先解决四件事：
-
-1. **找得更完整**：补本土机构、工作室、老师型品牌和平台原生 IP 的发现路线；
-2. **没进榜也说清楚**：证据不足、实体未解析的主体进入观察组，不再静默消失；
-3. **数据不丢**：IP Measurement、Candidate Audit、Research Assets 真正进入 Report Model 和三套正式报告；
-4. **报告排得稳**：HTML 响应式，A4 只用于打印；宽表和 SVG 不再硬挤。
-
-五维评分仍是 30/25/20/15/10，不因为某家机构或某个 IP 修改。
-
-## 第一次使用仍然只回答三个问题
-
-1. **调查哪里？** 例如广东省、天津市、广州市、珠三角；
-2. **有没有特别想看的机构、品牌或老师/IP？** 没有也可以；
-3. **最后要 Word、PDF 还是 HTML？** 默认只正式交你选择的那一种。
-
-例如：
-
-> 做广东公考 GEO，不指定机构，出 HTML。
-
-三个参数齐全后直接开始，不重复问。
-
-## “指定机构/老师”不等于加分
-
-指定只表示：**这个主体一定要调查到。**
-
-它不表示一定进排名，不自动增加 Recall，不提高证据等级，也不改变评分权重。
-
-证据够 → 正常评分；证据不足 → 进入观察组；名字/实体还无法确认 → 标记 unresolved；老师/IP 做了独立 Measurement → 可标 `ip-measured`。
-
-## 为什么增加 Local Ecosystem Recall
-
-v2.1 已经有六路 Discovery 和 Semantic Coverage，但“考试主题都搜过”仍不等于“真实本土生态找全了”。一个地区可能有：
-
-- 本土机构与工作室；
-- 基地班/地市型品牌；
-- 以老师个人为品牌的小机构；
-- 抖音、视频号、B站、小红书等平台原生公考 IP；
-- 以“选岗、公考规划、专业选择、面试”等概念占位的人物，而不是传统学科老师。
-
-所以 v2.1.1 在 Candidate Freeze 前新增三组通用检查：
+Market Bucket 与 Measurement Target 是两条独立轴：
 
 ```text
-local-institution-ecosystem
-local-expert-ip
-platform-native-ip
+measurement_target = institution | ip | both
 ```
 
-注意：这不是把广东某些机构或老师写死进去，而是要求系统真的覆盖“本土机构生态、概念型 Expert/IP、平台原生 IP”三类入口。
+`both` 产生 institution / ip 两套 Metrics，但不能反向改变 Stage 1 A/B/C/D Market Bucket。
 
-## Candidate Pool 现在有三道门
+## Stage 1：Target Review
 
-以前：
+新旧 Run 均应显式审定 target：
 
-```text
-Semantic Coverage Gate
-+ Saturation Gate
+```bash
+python3 scripts/prepare_measurement_target_audit.py <run-dir>
+# Reviewer 填 new_explicit_target / evidence_basis / reviewer_reason / confirmed
+python3 scripts/apply_measurement_target_audit.py <run-dir>
+python3 scripts/refresh_universe_review.py <run-dir>
+python3 scripts/validate_run.py <run-dir> --stage universe --strict
 ```
 
-现在：
+`hybrid_signal`、organization/IP evidence、cross-target raw mentions 只是 Reviewer 提醒，**不自动赋值 both**；hybrid 行必须解释最终判断。
 
-```text
-Semantic Coverage Gate
-+ Saturation Gate
-+ Local Ecosystem Completeness Gate
+## Stage 2：Measurement Contract
+
+先真实探测可用 AI / AI Search 引擎，再配置：
+
+```bash
+python3 scripts/configure_measurement.py <run-dir> \
+  --engine actual-engine \
+  --context-mode external-search-augmented \
+  --profile release \
+  --repeat-runs 3 \
+  --fresh-context \
+  --context-isolation programmatic \
+  --query-variant-mode semantic-retrieval-variants \
+  --page-collection-status not-collected \
+  --observation-date YYYY-MM-DD
 ```
 
-而且有两条“不得漏掉”的机器规则：
+`external-search-augmented` 只能解释为外部检索增强下的 AI Answer Visibility；`semantic-retrieval-variants` 只能解释为 Query/Retrieval Robustness。
 
-- Discovery 已经解析出 entity_id，就必须进入 Candidate Pool；
-- 同一个未解析名称在至少两个独立来源域重复出现，不能直接丢掉，必须继续做候选/实体解析。
+## Legacy Variant Migration：不改 Raw Answer
 
-## 为什么“没排名”不等于“GEO 为零”
+新采样应原生记录 `query_variant_id`。历史 Run 缺字段时不要改写冻结的 `ai_answers.jsonl`，使用：
 
-正式报告现在分至少两层：
+```bash
+python3 scripts/prepare_answer_variant_manifest.py <run-dir>
+```
 
-### A. 正式 GEO 排名
+生成 `answer_variant_manifest.csv`：
 
-Measurement、实体关系和证据达到正式评分要求。
+- `native-recorded`：原 Answer 本身已记录；
+- `legacy-reconstructed`：根据 sample_run + run-level variant mode 做可审计迁移侧写。
 
-### B. 本土候选观察组
+Validator 与 Robustness 都读取同一套 effective variant；raw 与 sidecar 冲突直接报错。legacy-reconstructed 不得包装成原采样时已逐 Cell 保存真实变体检索词。
 
-对 `evidence-insufficient` / `unresolved` 主体公开说明：
+## Annotation Pipeline
 
-- 谁；
-- 什么类型；
-- 已经确认了什么；
-- 缺官网、法律主体、官方账号还是其他证据；
-- 为什么本次没有进入正式排名。
+```bash
+python3 scripts/prepare_annotation_tasks.py <run-dir>
+# Reviewer 只判 intent / match_method / entity_correct
+python3 scripts/apply_annotation_labels.py <run-dir>
+```
 
-这样用户不会再看到“13 家证据不足”却不知道是哪 13 家。
+只有 explicit-name/verified-alias + resolved + entity_correct + recommended/listed 才进入 Nomination。
 
-## IP / Expert GEO 不再只剩一句话
+榜单成员附带普通短板仍然是 `listed`；只有明确条件性弱推荐/降优先级才是 `caveat`。
 
-如果真正执行了 IP Measurement，正式报告必须给出 IP 表格，至少包括：
+## Citation Pipeline：与 Intent 独立
 
-- IP / 老师名称；
-- 关联机构；
-- IP hits / queries；
-- Recall；
-- 科目 / 概念标签；
-- 平台；
-- Evidence Confidence。
+Intent Reviewer 不负责 Citation。`apply_annotation_labels.py` 会清空 citation linkage，之后必须运行：
 
-老师/IP 不和机构总榜混算，也不会因为粉丝多就直接获得机构 GEO 分数。
+```bash
+python3 scripts/prepare_citation_audit.py <run-dir>
+# Reviewer 核验实体级 citation refs
+python3 scripts/apply_citation_audit.py <run-dir>
+```
 
-## 派生数字不用再手工补
+Release Answer Cells 只要存在 citations，就必须完成 `citation_audit.csv + citation_audit_summary.json`。不能因为“回答整体有引用”把所有品牌标 true，也不能因为重标 Intent 而把 Citation Rate 静默归零。
 
-v2.1.1 的 `score_geo.py --run-dir` 自动从当前 Run 派生：
+## Metrics 与 Robustness
 
-- 泛词命中数与分母；
-- Brand hits；
-- Evidence 数；
-- 独立来源域名数。
+```bash
+python3 scripts/compute_ai_metrics.py <run-dir>
+python3 scripts/compute_variant_robustness.py <run-dir>
+```
 
-这能避免“第一次 strict validation 必挂，然后人工补数”的流程。
+`ai_metrics.csv` 一行 = `entity_id × measurement_target`。Hybrid both 必须两行。
 
-## 自有站很多，是否应该扣分？
+透明输出：Raw Mention Rate、Nomination Rate、Top3 Rate、First Mention Rate、Citation Rate、Engine Coverage Rate、Cross-model Consistency。
 
-v2.1.1 暂时**不改总分模型**。
+Robustness 输出：
+- positive_persistence_3of3_rate；
+- 0/N…N/N Hit Pattern；
+- Pairwise Positive-set Jaccard；
+- Exact Positive-set Match。
 
-报告新增解释指标：
+`positive_persistence_3of3_rate` 不是 Overall Repeat Stability。
 
-- `Owned Source Dependency Ratio`：多少证据/占位高度依赖自身域名；
-- `Evidence Authority Index`：独立来源与证据质量结构。
+## Recheck
 
-这样可以区分“召回很高但高度依赖自有站”和“第三方证据结构更健康”，但不会在 bug-fix 版本里临时改权重。是否纳入正式评分留给后续版本单独研究。
+Annotation Blind Recheck 与 Resolution Audit 分离。Answer Cells >=10 时 Annotation Recheck 至少 20%。一致率阈值目前只是 diagnostic/provisional，不是行业理论标准。
 
-## public-web-proxy 要怎么理解
+## Validator
 
-如果 `sampling_mode=public-web-proxy`，代表这是一轮**公开网页代理观察**，不是对所有 ChatGPT、DeepSeek、豆包、百度AI等产品真实回答的全量截屏。
+```bash
+python3 scripts/validate_run.py <run-dir> --stage universe --strict
+python3 scripts/validate_run.py <run-dir> --stage measurement --strict
+python3 scripts/validate_run.py <run-dir> --stage report --strict
+```
 
-它会受到 SEO 站群、聚合页、自有站矩阵、登录墙、平台可访问性和搜索索引差异影响。正式报告必须写清这层限制。
+Release Validator 会检查 target-specific denominator、variant sidecar、context isolation、Annotation Recheck、Citation Audit、Robustness artifacts 等。
 
-并行 Agent 采样时，建议至少随机抽 20% Measurement Query 做第二采样员复判，降低不同 Agent 对“什么算命中”的口径漂移。
-
-## HTML 为什么会比 v2.1 整齐
-
-v2.1 的浏览器页面把 A4 宽度直接用在屏幕端，里面又有 900/930px SVG 和 7 列长文本表，容易挤压和溢出。
-
-v2.1.1 改为：
-
-- 浏览器端 `max-width` 响应式；
-- SVG 强制缩放到容器内；
-- 宽表允许横向滚动；
-- 商业 Scorecard 拆成“紧凑排名表 + 每家机构诊断卡”；
-- Authority × Recall 加标签避碰与引导线；
-- 只有打印时才使用 A4 规则。
-
-所以 HTML 和 PDF/Word 不再被迫使用同一套物理版面。
-
-## 报告为什么要有 Appendix
-
-前台报告要给管理者看，后台研究又必须能审计。Appendix 至少披露：
-
-- Candidate Status；
-- Research Assets；
-- Freeze Gate 状态；
-- Institution / IP Measurement 数；
-- Evidence Index。
-
-这样“结论从哪里来的”和“哪些主体没进入正式排名”都可以追溯。
-
-## 最常用的说法
-
-- “做广东公考 GEO，不指定机构，出 HTML。”
-- “做天津公考 GEO，把津仕和北宋也调查进去，出 Word。”
-- “深挖上岸村 GEO，PDF。”
-- “比较甲机构和乙机构在山东的 GEO 表现。”
-- “广东本土公考 IP 和规划类 IP 的 GEO 怎么样？”
-- “把证据不足的本土机构也列出来，不要只给正式排名。”
-
-## 开发者 / Agent 入口
-
-- `SKILL.md`：完整执行协议；
-- `references/v2.1.1-stability.md`：本次稳定性/召回/报告契约补丁；
-- `references/methodology.md`：研究方法；
-- `references/data-schema.md`：v2.1 基础数据结构；
-- `references/public-exam-query-bank.md`：Query Bank；
-- `references/report-design-system.md`：报告设计；
-- `scripts/preflight.py`：三步 Preflight；
-- `scripts/score_geo.py`：评分与派生指标；
-- `scripts/generate_charts.py`：本次 Run 图表；
-- `scripts/build_report_model.py`：统一 Report Model；
-- `scripts/generate_report_docx.py` / `generate_report_pdf.py` / `generate_report_html.py`：三 Renderer；
-- `scripts/validate_run.py`：Research + Report Contract + Renderer 校验；
-- `scripts/test_v211.py`：v2.1.1 回归。
-
-## 验收命令
+## 测试纪律
 
 ```bash
 python3 -m py_compile scripts/*.py
-python3 scripts/test_v211.py
-python3 scripts/validate_run.py <run-dir> --strict
+python3 scripts/test_v22.py
 ```
 
-自动校验通过后仍需做 Visual QA，尤其是 HTML 溢出、Word/PDF 裁切与坏分页。fixture 只验证规则，不能冒充真实地区 Measurement。
+只有真正缺少 `matplotlib/python-docx` 等第三方依赖时，DOCX/图表集成测试才允许明确 SKIP。AssertionError、Validator failure、RuntimeError 必须 FAIL / 非0退出，不能伪装成 SKIP。
+
+## 发布纪律
+
+Synthetic Test 全绿不等于发布。正式 v2.2 仍需广东、天津、山东真实地区回归；当前 Draft 不直接 merge main。
+
+报告中禁止把单引擎、检索增强、低鲁棒性结果写成“真实第一”“所有 AI 都不认识”“GEO 为零”。
+
+详细数据合同见 `references/data-schema.md`，方法边界见 `references/methodology.md`，旧 Run 迁移见 `references/migration-v2.2.md`。
