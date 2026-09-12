@@ -3,10 +3,13 @@
 
 The task pack freezes entity resolution upstream. Reviewers label semantic intent only; they are
 not asked to infer corporate/entity resolution from answer prose or decide citation linkage.
+Short-name substring risks are surfaced as reviewer warnings so aliases embedded inside larger
+Chinese tokens do not silently become positive nominations.
 """
 from __future__ import annotations
 import argparse,csv,json
 from pathlib import Path
+from resolution_review_utils import short_name_boundary_suspicion
 
 def rcsv(p):
     if not p.is_file():return []
@@ -20,10 +23,11 @@ def main_build(run:Path):
         if eid in universe:resolution="resolved"
         elif eid in emergent:resolution=(emergent[eid].get("resolution_status") or "unresolved").lower()
         else:raise ValueError(f"raw mention entity_id 未在 Universe/emergent registry: {eid}")
-        out.append({"mention_id":r.get("mention_id") or f"AM{i:04d}","answer_id":aid,"query_id":a.get("query_id"),"entity_id":eid,"canonical_name":r.get("canonical_name") or (universe.get(eid) or emergent.get(eid) or {}).get("canonical_name"),"mentioned_name":r.get("mentioned_name"),"mention_rank":r.get("mention_rank"),"char_pos":r.get("char_pos"),"mention_context":r.get("context",""),"response_text":a.get("response_text",""),"frozen_resolution_status":resolution,"measurement_target":r.get("measurement_target",""),"label_instruction":"Choose mention_intent using data-schema anchors; do not re-decide frozen_resolution_status; do not label citations here because citation linkage is reviewed separately."})
-    p=run/"annotation_tasks.jsonl";p.write_text("\n".join(json.dumps(x,ensure_ascii=False) for x in out)+"\n",encoding="utf-8");return p,len(out)
+        mentioned=r.get("mentioned_name") or "";response=a.get("response_text","") or "";suspicious=short_name_boundary_suspicion(response,mentioned)
+        out.append({"mention_id":r.get("mention_id") or f"AM{i:04d}","answer_id":aid,"query_id":a.get("query_id"),"entity_id":eid,"canonical_name":r.get("canonical_name") or (universe.get(eid) or emergent.get(eid) or {}).get("canonical_name"),"mentioned_name":mentioned,"mention_rank":r.get("mention_rank"),"char_pos":r.get("char_pos"),"mention_context":r.get("context",""),"response_text":response,"frozen_resolution_status":resolution,"measurement_target":r.get("measurement_target",""),"substring_suspicion":suspicious,"substring_suspicion_reason":"short Chinese name touches an adjacent Chinese character; verify canonical mapping/entity_correct" if suspicious else "","label_instruction":"Choose mention_intent using data-schema anchors; do not re-decide frozen_resolution_status; do not label citations here because citation linkage is reviewed separately. If substring_suspicion=true, explicitly verify entity_correct before positive nomination."})
+    p=run/"annotation_tasks.jsonl";p.write_text("\n".join(json.dumps(x,ensure_ascii=False) for x in out)+"\n",encoding="utf-8");return p,len(out),sum(bool(x.get("substring_suspicion")) for x in out)
 def main():
     p=argparse.ArgumentParser();p.add_argument("run_dir",type=Path);a=p.parse_args()
-    try:path,n=main_build(a.run_dir);print(f"{path}: {n} annotation tasks");return 0
+    try:path,n,s=main_build(a.run_dir);print(f"{path}: {n} annotation tasks; substring_suspicion={s}");return 0
     except (OSError,ValueError,json.JSONDecodeError) as e:print(f"prepare_annotation_tasks：错误：{e}");return 2
 if __name__=="__main__":raise SystemExit(main())
