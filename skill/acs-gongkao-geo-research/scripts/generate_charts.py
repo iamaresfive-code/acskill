@@ -5,6 +5,7 @@ Rules:
 - Customer charts are Chinese-first. Never fall back to English labels.
 - Charts should communicate a decision, not mirror internal enums/tables.
 - Missing evidence is omitted from score rankings rather than rendered as zero.
+- Report Entity Identity is one point per entity; `both` never creates duplicate scatter points.
 """
 from __future__ import annotations
 import argparse,csv,json,statistics
@@ -57,14 +58,17 @@ def generate(run:Path):
     concepts=rcsv(run/"concept_ownership.csv")
     files=[]
 
-    # 1) AI 可见度 × GEO 资产基础：替代内部 Market Universe 构成图。
+    # 1) AI 可见度 × GEO 资产基础：每个现实主体只画一个点。
     asset_by={r.get("entity_id"):r for r in assets}
-    points=[]
+    best_by_entity={}
     for r in metrics:
-        a=asset_by.get(r.get("entity_id")) or {}
+        eid=r.get("entity_id");a=asset_by.get(eid) or {}
         x=fnum(a.get("asset_readiness"));y=fnum(r.get("nomination_rate"))
-        if x is None or y is None:continue
-        points.append({"name":r.get("canonical_name") or a.get("canonical_name") or r.get("entity_id"),"x":x,"y":y*100,"target":r.get("measurement_target")})
+        if not eid or x is None or y is None:continue
+        point={"name":r.get("canonical_name") or a.get("canonical_name") or eid,"x":x,"y":y*100,"target":r.get("measurement_target")}
+        old=best_by_entity.get(eid)
+        if old is None or point["y"]>old["y"]:best_by_entity[eid]=point
+    points=list(best_by_entity.values())
     if points:
         xs=[p["x"] for p in points];ys=[p["y"] for p in points]
         mx=statistics.median(xs);my=statistics.median(ys)
@@ -106,7 +110,6 @@ def generate(run:Path):
     ips=[r for r in metrics if r.get("measurement_target")=="ip" and r.get("market_role")=="expert-ip"]
     visibility(ips,"ai-visibility-ip.png","老师 / IP AI 提名率")
 
-    # 5) GEO 资产基础：只画有证据支持的评分主体，未知不落成 0 分。
     scored=[]
     for r in assets:
         score=fnum(r.get("asset_readiness"))
@@ -125,13 +128,11 @@ def generate(run:Path):
         else:ax.set_xlabel("0–100")
         p=out/"asset-readiness.png";_save(fig,plt,p);files.append(p.name)
 
-    # 6) 概念占位：稀疏热力图改成 Top 10 绑定强度条形图。
     ranked=[]
     for r in concepts:
         strength=fnum(r.get("strength") or r.get("score"))
         if strength is None:continue
-        entity=r.get("canonical_name") or r.get("entity_name") or ""
-        concept=r.get("concept") or ""
+        entity=r.get("canonical_name") or r.get("entity_name") or "";concept=r.get("concept") or ""
         if entity and concept:ranked.append((r,strength,entity,concept))
     ranked=sorted(ranked,key=lambda x:x[1],reverse=True)[:10]
     if ranked:
@@ -145,9 +146,8 @@ def generate(run:Path):
             ax.set_xlabel("概念绑定强度（10分制）");ax.set_title("概念占位 Top 10")
         p=out/"concept-ownership.png";_save(fig,plt,p);files.append(p.name)
 
-    payload={"files":files,"cjk_font_available":cjk,"customer_chart_language":"zh-CN","generated_from":{"ai_metrics":len(metrics),"asset_scores":len(assets),"concept_rows":len(concepts)}}
-    (out/"chart_manifest.json").write_text(json.dumps(payload,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
-    return payload
+    payload={"files":files,"cjk_font_available":cjk,"customer_chart_language":"zh-CN","generated_from":{"ai_metrics":len(metrics),"asset_scores":len(assets),"concept_rows":len(concepts),"opportunity_matrix_entities":len(points)}}
+    (out/"chart_manifest.json").write_text(json.dumps(payload,ensure_ascii=False,indent=2)+"\n",encoding="utf-8");return payload
 
 
 def main():
