@@ -58,3 +58,14 @@ def prepare(run:Path):
     preserved=sum(_carry_forward(r,prior_by.get(r.get("entity_id"))) for r in out)
     with p.open("w",encoding="utf-8-sig",newline="") as f:w=csv.DictWriter(f,fieldnames=FIELDS);w.writeheader();w.writerows(out)
     summary={"audit_rows":len(out),"universe_rows":len(universe),"resolved_emergent_rows":len(resolved),"hybrid_review_signals":sum(r["hybrid_signal"]=="true" for r in out),"preserved_confirmed_rows":preserved,"needs_review_rows":sum(r["review_status"]!="confirmed" for r in out)};(run/"measurement_target_audit_prepare_summary.json").write_text(json.dumps(summary,ensure_ascii=False,indent=2)+"\n",encoding="utf-8");return p,summary
+
+def main():
+    p=argparse.ArgumentParser();p.add_argument("run_dir",type=Path);a=p.parse_args()
+    try:
+        path,s=prepare(a.run_dir)
+        print(f"{path}: {s['audit_rows']} rows = universe {s['universe_rows']} + resolved emergent {s['resolved_emergent_rows']}; preserved={s['preserved_confirmed_rows']}; needs-review={s['needs_review_rows']}; hybrid signals={s['hybrid_review_signals']}")
+        return 0
+    except (OSError,ValueError,json.JSONDecodeError) as e:
+        print(f"prepare_measurement_target_audit：错误：{e}")
+        return 2
+if __name__=="__main__":raise SystemExit(main())
