@@ -9,7 +9,7 @@
 | Skill | 解决什么问题 | 入口 |
 | --- | --- | --- |
 | `acs-second-brain-manager` | 长期接管和治理本地 Markdown / Obsidian 第二大脑 | [查看 Skill](skill/acs-second-brain-manager/) |
-| `acs-video-script-extractor` | 本地音视频离线转写、双模型复核、字幕校对与忠实文案整理 | [查看 Skill](skill/acs-video-script-extractor/) |
+| `acs-video-script-extractor` | 本地音视频离线转写、双模型复核、字幕校对与还原文案整理 | [查看 Skill](skill/acs-video-script-extractor/) |
 
 如果你第一次使用，直接看：
 
@@ -37,7 +37,7 @@
 ```text
 请使用 acs-video-script-extractor 处理这个本地视频。
 全程离线，先做双模型转写，再校对高风险差异；如果视频有可见字幕，结合字幕画面复核。
-最后给我完整逐字稿、忠实整理文案和待确认疑点。
+最后给我完整逐字稿、还原整理文案和待确认疑点。
 ```
 
 然后提供本地音视频文件。
@@ -88,7 +88,7 @@
 - `large-v3 + medium` 双模型本地转写；
 - 全文差异对齐与风险分级；
 - 高风险差异优先字幕抽帧；
-- 校对逐字稿 / 忠实整理稿 / 创作稿分层；
+- 校对逐字稿 / 还原整理稿 / 创作稿分层；
 - 待确认疑点显式保留；
 - 完整交付验收；
 - 不写死开发者个人路径，可通过环境变量适配本机环境。
