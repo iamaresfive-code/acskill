@@ -7,7 +7,7 @@ import argparse
 import json
 from pathlib import Path
 
-FINAL_FILES = ("逐字稿-校对版.md", "文案-忠实整理版.md", "待确认疑点.md")
+FINAL_FILES = ("逐字稿-校对版.md", "文案-还原整理版.md", "待确认疑点.md")
 
 
 def parse_args() -> argparse.Namespace:
