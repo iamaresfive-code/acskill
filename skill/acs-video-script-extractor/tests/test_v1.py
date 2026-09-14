@@ -92,7 +92,7 @@ def main() -> None:
         assert "否定词风险" in reasons
         assert any(point["risk_score"] >= 6 for point in review["points"])
 
-        for name in ("逐字稿-校对版.md", "文案-忠实整理版.md", "待确认疑点.md"):
+        for name in ("逐字稿-校对版.md", "文案-还原整理版.md", "待确认疑点.md"):
             (out / name).write_text(f"# {name}\n\n测试内容\n", encoding="utf-8")
 
         result = run(SCRIPTS / "validate_outputs.py", out)
