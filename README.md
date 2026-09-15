@@ -65,6 +65,7 @@
 - 来源追踪与事实边界；
 - 人物、机构等实体关系维护；
 - 时效数据与历史快照；
+- 长期项目专项记忆与跨对话接手；
 - 知识库健康检查；
 - 高风险治理操作确认；
 - 多 Agent 场景下的写入边界。
@@ -140,6 +141,7 @@ Skill 不需要为了形式强行拥有所有目录；只有确实需要模板�
 | --- | --- | --- |
 | [新手入门](docs/新手入门.md) | 第一次使用的人 | 先选哪个 Skill、第一句话怎么说 |
 | [第二大脑 README](skill/acs-second-brain-manager/README.md) | 第二大脑用户 | 能力模型、治理边界与结构 |
+| [专项记忆使用说明](skill/acs-second-brain-manager/docs/project-memory-guide.md) | 长期项目用户 | 跨对话接手、维护、归档与公开前脱敏 |
 | [视频提取 README](skill/acs-video-script-extractor/README.md) | 视频转写用户 | 离线流程、环境要求与交付内容 |
 | 各 Skill 的 `SKILL.md` | Agent / 开发者 | 实际执行协议、边界和验收标准 |
 | 各 Skill 的 `docs/` | 实际使用者 | Quick Start、案例和 FAQ |

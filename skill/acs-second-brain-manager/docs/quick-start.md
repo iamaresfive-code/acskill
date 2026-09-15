@@ -83,6 +83,14 @@ Agent 会在 `UPDATE / MERGE / CREATE / PENDING / SOURCE_ONLY` 中做判断。
 
 优先更新已有实体和关系，不机械新建“最新情况”页面。
 
+### 长期项目换新对话继续
+
+```text
+这是一个会跨多次对话推进的长期项目。请先检查是否已有项目页、任务台账或专项记忆；如无重复入口，请按专项记忆规范给出创建方案。
+```
+
+专项记忆的创建、更新和公开前脱敏方法见 [专项记忆使用说明](project-memory-guide.md)。
+
 ### 冲突检查
 
 ```text
@@ -109,5 +117,6 @@ Agent 会在 `UPDATE / MERGE / CREATE / PENDING / SOURCE_ONLY` 中做判断。
 - 想理解 Skill 全部能力：看 [README](../README.md)
 - 想看实际案例：看 [使用案例](examples.md)
 - 想理解术语：看 [概念解释](concepts.md)
+- 想让长期项目跨对话接续：看 [专项记忆使用说明](project-memory-guide.md)
 - 遇到使用问题：看 [常见问题](faq.md)
 - Agent / 开发者需要执行协议：看 [SKILL.md](../SKILL.md)

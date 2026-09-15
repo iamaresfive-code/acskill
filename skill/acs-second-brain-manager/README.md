@@ -137,6 +137,16 @@ Source Layer 与 Knowledge Layer 分离：
 
 项目状态优先依据用户明确确认、已有状态字段和知识库已确认的治理规则。
 
+### 长期项目专项记忆
+
+跨多次对话推进的复杂项目，可以使用专项记忆保存项目定义、当前阶段、关键决策、卡点、下一步和现场文件入口。
+
+专项记忆不是聊天流水账，也不与任务台账重复维护。真实项目文件通常包含内部信息，公开分享前需要脱敏。
+
+- [专项记忆使用说明](docs/project-memory-guide.md)
+- [专项记忆规范](references/project-memory.md)
+- [可复制模板](templates/project-memory.md)
+
 ### 知识库健康检查
 
 可检查：
@@ -239,16 +249,19 @@ acs-second-brain-manager/
 │   └── openai.yaml
 ├── docs/
 │   ├── quick-start.md               # 最短启动路径
+│   ├── project-memory-guide.md       # 专项记忆使用说明与脱敏清单
 │   ├── examples.md                  # 使用案例
 │   ├── concepts.md                  # 概念解释
 │   └── faq.md                       # 常见问题
 ├── references/
 │   ├── onboarding.md                # 首次接管执行细则
 │   ├── knowledge-model.md           # 知识模型与写入规则
+│   ├── project-memory.md             # 长期项目专项记忆规范
 │   ├── health-check.md              # 健康检查细则
 │   └── concurrency-policy.md        # 多 Agent 并发规则
 ├── templates/
 │   ├── profile.yaml
+│   ├── project-memory.md             # 可复制的专项记忆模板
 │   └── structure-contract.md
 ├── scripts/
 │   ├── scan_knowledge_base.py       # 只读结构扫描
@@ -277,6 +290,7 @@ python tests/test_v1.py
 
 - [使用案例](docs/examples.md)
 - [常见问题](docs/faq.md)
+- [专项记忆使用说明](docs/project-memory-guide.md)
 
 ### 理解概念
 
@@ -289,6 +303,7 @@ python tests/test_v1.py
 - [知识模型与写入规则](references/knowledge-model.md)
 - [健康检查](references/health-check.md)
 - [多 Agent 并发](references/concurrency-policy.md)
+- [专项记忆规范](references/project-memory.md)
 
 ## 一句话总结
 
