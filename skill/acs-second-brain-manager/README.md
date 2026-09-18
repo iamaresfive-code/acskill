@@ -1,5 +1,7 @@
 # 第二大脑知识库管理器
 
+当前版本：`v1.2`。本次修订完善本地文件链接检查、专项记忆归档命名与 Git 提交隐私说明。
+
 `acs-second-brain-manager` 是一个面向本地 Markdown / Obsidian 知识库的 AI 管理 Skill。
 
 它的目标不是“帮你整理一次资料”，而是让 Agent 在长期使用中持续维护一套**可追溯、可更新、可查询、不过度改写原有结构**的第二大脑。
@@ -275,6 +277,7 @@ acs-second-brain-manager/
 
 ```bash
 python tests/test_v1.py
+python tests/test_health_links.py
 ```
 
 扫描与健康检查脚本默认使用只读逻辑；除非显式指定输出，不会因为运行检查而改写业务知识。

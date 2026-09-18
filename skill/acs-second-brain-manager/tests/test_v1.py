@@ -25,6 +25,6 @@ def main():
         sb=v/'.second-brain'; sb.mkdir()
         profile=sb/'profile.yaml'; profile.write_text('''schema_version: "1.0"\nknowledge_base:\n  name: "Test"\n  root: "."\n  platform: "obsidian"\ngovernance:\n  structure_mode: "adaptive"\n  write_mode: "confirm-first"\nsources:\n  immutable: true\nmarkdown:\n  frontmatter: true\nconcurrency:\n  mode: "single-agent"\n''','utf-8')
         valid=json.loads(run(SCRIPTS/'validate_profile.py',profile)); assert valid['valid'] is True
-    print('PASS: acs-second-brain-manager v1.1 smoke tests')
+    print('PASS: acs-second-brain-manager v1.2 smoke tests')
 
 if __name__=='__main__': main()
