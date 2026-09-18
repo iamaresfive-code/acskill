@@ -45,7 +45,9 @@ def candidates(root, page, target, wiki):
     if wiki and '/' in raw and not raw.startswith(('./','../','/')): paths.insert(0,root / raw)
     found=[]
     for path in paths:
-        options=[path] if path.suffix else [path, path.with_suffix('.md')]
+        options=[path]
+        if (wiki and path.suffix.lower() != '.md') or not path.suffix:
+            options.append(path.with_name(path.name + '.md'))
         for option in options:
             resolved=option.resolve()
             try: rel=resolved.relative_to(root).as_posix()

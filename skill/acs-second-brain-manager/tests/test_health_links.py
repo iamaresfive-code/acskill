@@ -15,6 +15,7 @@ class HealthLinks(unittest.TestCase):
             root = Path(temp)
             files = {
                 'index.md': '''[[a/note.md]] [[missing/note]] [[note]]
+[[a/方案v1.2]] [[a/方案v1.2.md]] [[方案v1.2]]
 [space](<a/with space.md>) [encoded](a/with%20space.md#heading)
 [nested](a/file(1).md) [bad](missing.md)
 ![asset](a/pic.png) [web](https://example.com/a) [self](#title)
@@ -28,6 +29,7 @@ class HealthLinks(unittest.TestCase):
                 'a/with space.md': '# Space\n',
                 'a/file(1).md': '# Parentheses\n',
                 'a/pic.png': 'fixture',
+                'a/方案v1.2.md': '# Dotted name\n',
             }
             for rel, content in files.items():
                 dest = root / rel

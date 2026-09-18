@@ -1,6 +1,6 @@
 # 第二大脑知识库管理器
 
-当前版本：`v1.2`。本次修订完善本地文件链接检查、专项记忆归档命名与 Git 提交隐私说明。
+当前版本：`v1.3`。本次修复配置校验错误放行，以及 Wiki 链接中带点号文件名的误报。
 
 `acs-second-brain-manager` 是一个面向本地 Markdown / Obsidian 知识库的 AI 管理 Skill。
 
@@ -275,9 +275,12 @@ acs-second-brain-manager/
 
 ## 快速测试
 
+先在当前 Python 环境运行 `python -m pip install -r requirements.txt` 安装配置校验依赖 PyYAML。
+
 ```bash
 python tests/test_v1.py
 python tests/test_health_links.py
+python tests/test_profile.py
 ```
 
 扫描与健康检查脚本默认使用只读逻辑；除非显式指定输出，不会因为运行检查而改写业务知识。

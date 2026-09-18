@@ -1,36 +1,51 @@
 #!/usr/bin/env python3
 """Validate core fields of .second-brain/profile.yaml without mutating the vault."""
 from __future__ import annotations
-import argparse, json, re
+import argparse, json
 from pathlib import Path
 
-REQUIRED = ['schema_version','knowledge_base','governance','sources','markdown','concurrency']
+def validate(data):
+    if not isinstance(data, dict): return ['profile must be a mapping']
+    errors=[]
+    if data.get('schema_version') != '1.0': errors.append('schema_version must be string "1.0"')
+    schema={
+        'knowledge_base': {'name': str, 'root': str, 'platform': {'markdown-folder','obsidian'}},
+        'governance': {'structure_mode': {'adaptive','custom','standard'}, 'write_mode': {'read-only','confirm-first','trusted-task'}},
+        'sources': {'immutable': bool}, 'markdown': {'frontmatter': bool},
+        'concurrency': {'mode': {'single-agent','multi-agent'}},
+    }
+    for section, fields in schema.items():
+        obj=data.get(section)
+        if not isinstance(obj,dict):
+            errors.append(f'{section} must be a mapping'); continue
+        for field,rule in fields.items():
+            value=obj.get(field)
+            valid=(isinstance(value,str) and value in rule) if isinstance(rule,set) else type(value) is rule
+            if isinstance(value,str) and not value.strip(): valid=False
+            if not valid: errors.append(f'{section}.{field} is missing or has an invalid type/value')
+    return errors
 
-def top_keys(text):
-    keys=[]
-    for line in text.splitlines():
-        if line and not line.startswith((' ','\t','#','-')):
-            m=re.match(r'^([A-Za-z0-9_-]+)\s*:', line)
-            if m: keys.append(m.group(1))
-    return keys
-
-def find_scalar(text, key):
-    m=re.search(rf'^\s*{re.escape(key)}\s*:\s*["\']?([^\n"\']*)', text, re.M)
-    return m.group(1).strip() if m else None
+def load_profile(path):
+    import yaml
+    class UniqueLoader(yaml.SafeLoader): pass
+    def mapping(loader,node,deep=False):
+        result={}
+        for key_node,value_node in node.value:
+            key=loader.construct_object(key_node,deep=deep)
+            if not isinstance(key,str): raise ValueError('mapping keys must be strings')
+            if key in result: raise ValueError(f'duplicate mapping key: {key}')
+            result[key]=loader.construct_object(value_node,deep=deep)
+        return result
+    UniqueLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,mapping)
+    try: return validate(yaml.load(path.read_text(encoding='utf-8'),Loader=UniqueLoader))
+    except (OSError,UnicodeError,ValueError,yaml.YAMLError) as exc: return [f'cannot validate profile: {exc}']
 
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument('profile'); a=ap.parse_args()
     p=Path(a.profile).expanduser().resolve()
-    if not p.is_file(): raise SystemExit(f'profile not found: {p}')
-    text=p.read_text('utf-8', errors='replace')
-    keys=top_keys(text); errors=[]; warnings=[]
-    for k in REQUIRED:
-        if k not in keys: errors.append(f'missing top-level key: {k}')
-    mode=find_scalar(text,'write_mode')
-    if mode and mode not in {'confirm-first','read-only','trusted-task'}: errors.append(f'invalid write_mode: {mode}')
-    structure=find_scalar(text,'structure_mode')
-    if structure and structure not in {'adaptive','custom','standard'}: errors.append(f'invalid structure_mode: {structure}')
-    if 'root:' not in text: warnings.append('knowledge_base.root not found')
+    warnings=[]
+    try: errors=load_profile(p)
+    except ImportError: errors=['PyYAML required: install requirements.txt in your Python environment']
     print(json.dumps({'valid':not errors,'errors':errors,'warnings':warnings,'profile':str(p)},ensure_ascii=False,indent=2))
     raise SystemExit(0 if not errors else 2)
 

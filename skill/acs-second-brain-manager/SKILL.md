@@ -2,12 +2,12 @@
 name: acs-second-brain-manager
 description: 自适应管理本地 Markdown / Obsidian 知识库。用于已有知识库接管、只读结构理解、知识查询、资料入库、更新与合并、来源追踪、实体关系维护、项目状态维护和知识库健康检查。默认尊重用户现有结构，不把开发者目录强加给用户；查询默认只读，写入默认先给方案再确认；原始材料与知识页分层治理。
 metadata:
-  version: "1.2"
+  version: "1.3"
 ---
 
 # 第二大脑知识库管理器
 
-当前版本：`v1.2`。
+当前版本：`v1.3`。
 
 本 Skill 的目标不是替用户建立一套固定目录，而是先理解用户自己的知识库，再按该知识库已经确认的规则长期治理。
 
@@ -317,6 +317,8 @@ Agent 执行细则：
 - [专项记忆规范](references/project-memory.md)
 
 工具：
+
+`validate_profile.py` 依赖 `requirements.txt` 中的 PyYAML；缺少依赖时应报告未完成校验，不把结果当作通过。安装方法见快速开始。核心配置字段须按模板填写，空名称不能作为完成配置；YAML 合并键不受支持。
 
 - `scripts/scan_knowledge_base.py`：只读结构扫描；
 - `scripts/validate_profile.py`：检查知识库配置档案核心字段；

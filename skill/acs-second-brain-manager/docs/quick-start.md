@@ -8,6 +8,14 @@
 
 ## 已有知识库
 
+运行配置校验脚本需要 Python 3 和 PyYAML。在你选择的 Python 环境安装：
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+命令在本 Skill 目录执行。配置必须填写知识库名称与根目录、平台、治理模式、原件保护开关、frontmatter 开关及并发模式；模板的空名称需要填写。校验拒绝缺项、错误类型、重复键和错误层级；不支持 YAML 合并键。扫描和链接检查仍只依赖 Python 标准库。
+
 直接告诉 Agent：
 
 ```text
