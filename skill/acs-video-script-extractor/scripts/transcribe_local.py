@@ -53,18 +53,17 @@ def ensure_runtime() -> None:
     if os.environ.get("ACS_TRANSCRIPT_REEXEC") == "1":
         raise SystemExit("当前 Python 缺少 faster_whisper，且候选本地环境也不可用。")
 
-    current = Path(sys.executable).resolve()
+    # A venv's interpreter is often a symlink to the base Python. Resolving it
+    # loses pyvenv.cfg discovery and can also make distinct environments equal.
+    current = Path(sys.executable).absolute()
     for candidate in candidate_pythons():
         if not candidate.is_file():
             continue
-        try:
-            resolved = candidate.resolve()
-        except OSError:
-            continue
-        if resolved == current:
+        executable = candidate.absolute()
+        if executable == current:
             continue
         probe = subprocess.run(
-            [str(resolved), "-c", "import faster_whisper"],
+            [str(executable), "-c", "import faster_whisper"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=False,
@@ -72,7 +71,7 @@ def ensure_runtime() -> None:
         if probe.returncode == 0:
             env = os.environ.copy()
             env["ACS_TRANSCRIPT_REEXEC"] = "1"
-            os.execve(str(resolved), [str(resolved), str(Path(__file__).resolve()), *sys.argv[1:]], env)
+            os.execve(str(executable), [str(executable), str(Path(__file__).resolve()), *sys.argv[1:]], env)
 
     raise SystemExit(
         "未找到包含 faster_whisper 的本地 Python。请在当前环境安装依赖，"
@@ -121,6 +120,8 @@ def main() -> int:
     models = [item.strip() for item in args.models.split(",") if item.strip()]
     if len(models) < 2:
         raise SystemExit("至少需要两个本地模型，默认 large-v3,medium。")
+    if len(set(models)) != len(models):
+        raise SystemExit("模型名称不能重复；双模型复核需要不同模型。")
 
     os.environ.setdefault("HF_HUB_OFFLINE", "1")
     ensure_runtime()

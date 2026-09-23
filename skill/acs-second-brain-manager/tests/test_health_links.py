@@ -10,6 +10,29 @@ SCRIPT = Path(__file__).resolve().parents[1] / 'scripts' / 'health_check.py'
 
 
 class HealthLinks(unittest.TestCase):
+    def test_attachment_names_and_ambiguity(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            for rel in ('assets/chart.png', 'assets/report.pdf', 'assets/my image.png',
+                        'a/duplicate.png', 'b/duplicate.png'):
+                path = root / rel
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b'fixture')
+            (root / 'index.md').write_text(
+                '![[chart.png]] [[report.pdf]] ![[my%20image.png]] '
+                '![[duplicate.png]] ![[assets/chart.png]] ![[missing.png]]', encoding='utf-8')
+            result = subprocess.run([sys.executable, str(SCRIPT), str(root)],
+                                    capture_output=True, text=True, check=True)
+            data = json.loads(result.stdout)
+            self.assertEqual(data['markdown_pages'], 1)
+            self.assertEqual(data['signals']['broken_wikilinks'],
+                             [{'from': 'index.md', 'target': 'missing.png'}])
+            ambiguous = data['signals']['ambiguous_links']
+            self.assertEqual(len(ambiguous), 1)
+            self.assertEqual(ambiguous[0]['from'], 'index.md')
+            self.assertEqual(ambiguous[0]['target'], 'duplicate.png')
+            self.assertEqual(set(ambiguous[0]['candidates']), {'a/duplicate.png', 'b/duplicate.png'})
+
     def test_paths_extensions_markdown_and_examples(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

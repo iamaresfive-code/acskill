@@ -41,14 +41,32 @@ def keep_char(char: str) -> bool:
     return char.isalnum() or "\u4e00" <= char <= "\u9fff"
 
 
+def comparison_chars(text: str) -> list[str]:
+    """Ignore prose punctuation, but retain symbols that change numeric meaning."""
+    text = unicodedata.normalize("NFKC", text).lower().replace("−", "-")
+    chars = []
+    for index, char in enumerate(text):
+        before = text[:index].rstrip()
+        after = text[index + 1:].lstrip()
+        left_digit = bool(before) and before[-1].isdigit()
+        right_digit = bool(after) and after[0].isdigit()
+        numeric_symbol = (
+            (char == "." and right_digit)
+            or (char in "+-" and right_digit)
+            or (char in "%‰" and left_digit)
+        )
+        if keep_char(char) or numeric_symbol:
+            chars.append(char)
+    return chars
+
+
 def flatten(segments: list[dict]) -> tuple[str, list[float]]:
     chars: list[str] = []
     times: list[float] = []
     for segment in segments:
         start = float(segment["start"])
         end = float(segment["end"])
-        text = unicodedata.normalize("NFKC", str(segment.get("text", ""))).lower()
-        kept = [char for char in text if keep_char(char)]
+        kept = comparison_chars(str(segment.get("text", "")))
         count = len(kept)
         for index, char in enumerate(kept):
             chars.append(char)
@@ -121,7 +139,7 @@ def risk(first_diff: str, second_diff: str, tags: list[str]) -> tuple[int, list[
     number_pattern = r"(?:\d+(?:\.\d+)?)|[零〇一二两三四五六七八九十百千万亿点]+"
     first_numbers = re.findall(number_pattern, first_diff)
     second_numbers = re.findall(number_pattern, second_diff)
-    if first_numbers != second_numbers:
+    if first_numbers != second_numbers or re.search(r"[.+%‰-]", first_diff + second_diff):
         score += 5
         reasons.insert(0, "数字/日期风险")
     if re.search(r"[a-zA-Z]", first_diff + second_diff):

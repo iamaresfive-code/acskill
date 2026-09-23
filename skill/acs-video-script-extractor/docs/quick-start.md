@@ -107,7 +107,7 @@ python scripts/extract_review_frames.py \
 python scripts/validate_outputs.py "/path/to/output"
 ```
 
-看到 `PASS｜完整交付有效` 后，才把任务称为完整完成。
+脚本会校验不同模型、结果文件、来源哈希及差异文件结构。看到 `PASS｜完整交付有效` 后，还需确认人工校对完成、未确认项保留及完整性警告已说明，才能把任务称为完整完成。
 
 如果只是检查机器阶段：
 

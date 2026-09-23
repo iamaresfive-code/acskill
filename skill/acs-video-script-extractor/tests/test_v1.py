@@ -29,7 +29,7 @@ def write_json(path: Path, data: dict) -> None:
 def main() -> None:
     with tempfile.TemporaryDirectory() as td:
         out = Path(td)
-        source_hash = "abc123"
+        source_hash = "a" * 64
         first = {
             "source_sha256": source_hash,
             "model": "large-v3",

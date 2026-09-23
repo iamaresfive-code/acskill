@@ -59,11 +59,14 @@ def main():
     ap=argparse.ArgumentParser(); ap.add_argument('root'); ap.add_argument('--output'); a=ap.parse_args()
     root=Path(a.root).expanduser().resolve()
     if not root.is_dir(): raise SystemExit(f'root is not a directory: {root}')
-    pages=[]
+    pages=[]; by_name=defaultdict(list)
     for dp,dns,fns in os.walk(root):
         dns[:]=[d for d in dns if d not in SKIP_DIRS]
         for fn in fns:
-            if fn.lower().endswith('.md'): pages.append(Path(dp)/fn)
+            path=Path(dp)/fn
+            if not path.is_file(): continue
+            by_name[norm(fn)].append(path.relative_to(root).as_posix())
+            if fn.lower().endswith('.md'): pages.append(path)
     by_stem=defaultdict(list)
     for p in pages: by_stem[norm(p.stem)].append(p.relative_to(root).as_posix())
     dup={k:v for k,v in by_stem.items() if len(v)>1}
@@ -80,7 +83,9 @@ def main():
             found=candidates(root,p,target,wiki)
             if found is None: continue
             if wiki and not found and '/' not in target:
-                found=by_stem.get(norm(Path(target).stem if target.lower().endswith('.md') else target),[])
+                name=unquote(target).strip()
+                stem=Path(name).stem if name.lower().endswith('.md') else name
+                found=list(dict.fromkeys(by_stem.get(norm(stem),[]) + by_name.get(norm(name),[])))
             outbound[rel]+=1
             if len(found)>1: ambiguous.append({'from':rel,'target':target,'candidates':found})
             elif found: inbound[found[0]]+=1
