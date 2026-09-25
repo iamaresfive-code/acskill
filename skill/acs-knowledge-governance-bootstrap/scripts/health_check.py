@@ -56,7 +56,7 @@ def candidates(root, page, target, wiki):
     return found
 
 def main():
-    ap=argparse.ArgumentParser(); ap.add_argument('root'); ap.add_argument('--output'); a=ap.parse_args()
+    ap=argparse.ArgumentParser(); ap.add_argument('root'); ap.add_argument('--output'); ap.add_argument('--exclude-content', action='append', default=[]); a=ap.parse_args()
     root=Path(a.root).expanduser().resolve()
     if not root.is_dir(): raise SystemExit(f'root is not a directory: {root}')
     pages=[]; by_name=defaultdict(list)
@@ -69,9 +69,14 @@ def main():
             if fn.lower().endswith('.md'): pages.append(path)
     by_stem=defaultdict(list)
     for p in pages: by_stem[norm(p.stem)].append(p.relative_to(root).as_posix())
-    dup={k:v for k,v in by_stem.items() if len(v)>1}
+    excluded=[(root / x).resolve() for x in a.exclude_content]
+    for folder in excluded: folder.relative_to(root)
+    checked=[p for p in pages if not any(p.resolve()==d or d in p.resolve().parents for d in excluded)]
+    checked_rels={p.relative_to(root).as_posix() for p in checked}
+    dup={k:[x for x in v if x in checked_rels] for k,v in by_stem.items()}
+    dup={k:v for k,v in dup.items() if len(v)>1}
     broken=[]; broken_md=[]; ambiguous=[]; outbound=Counter(); inbound=Counter(); no_fm=[]
-    for p in pages:
+    for p in checked:
         rel=p.relative_to(root).as_posix()
         try: text=p.read_text('utf-8',errors='replace')
         except OSError: continue
@@ -90,8 +95,8 @@ def main():
             if len(found)>1: ambiguous.append({'from':rel,'target':target,'candidates':found})
             elif found: inbound[found[0]]+=1
             else: (broken if wiki else broken_md).append({'from':rel,'target':target})
-    orphans=[p.relative_to(root).as_posix() for p in pages if outbound[p.relative_to(root).as_posix()]==0 and inbound[p.relative_to(root).as_posix()]==0]
-    result={'schema_version':'1.0','root':str(root),'markdown_pages':len(pages),
+    orphans=[p.relative_to(root).as_posix() for p in checked if outbound[p.relative_to(root).as_posix()]==0 and inbound[p.relative_to(root).as_posix()]==0]
+    result={'schema_version':'1.0','root':str(root),'markdown_pages':len(pages),'checked_markdown_pages':len(checked),
             'critical':[], 'warnings':[], 'suggestions':[],
             'signals':{'duplicate_stems':dup,'broken_wikilinks':broken[:500],'broken_markdown_links':broken_md[:500],'ambiguous_links':ambiguous[:500],'orphan_pages':orphans[:500],'pages_without_frontmatter':no_fm[:500]},
             'notes':['Checks local wiki and inline Markdown file links; not heading anchors, reference-style links or remote URLs. Code examples are excluded. Semantic conflicts require agent review.', 'No source files were modified.']}

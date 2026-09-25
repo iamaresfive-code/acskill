@@ -1,17 +1,130 @@
-# 快速开始
+# Quick Start
 
-1. 让Agent读取本Skill，提供知识库路径和用途；已有库先只读识别权威规则、知识/来源目录和索引。
-2. 确认需要的模块和主要维护者。新库目录默认中文，已有库不改原名。
-3. 在库外生成方案，审阅新增/合并清单和候选全文。
-4. 明确批准后执行安装，运行目标库独立检查，再人工核对语义。
-5. 日常从库内AGENTS.md进入，只有治理升级再调用Skill。
+这是一份最短启动清单。
 
-命令（Python 3.10+）：
+如果你是第一次接触 `acskill`，建议先看更完整的：
+
+👉 [acskill 新手入门](../../../docs/新手入门.md)
+
+## 已有知识库
+
+运行配置校验脚本需要 Python 3 和 PyYAML。在你选择的 Python 环境安装：
 
 ```bash
-python3 scripts/bootstrap.py plan /absolute/vault --mode new --output /absolute/temp/plan
-python3 scripts/bootstrap.py apply /absolute/temp/plan/plan.json --approved
-python3 /absolute/vault/规范与工具/工具/治理检查.py
+python -m pip install -r requirements.txt
 ```
 
-已有库在plan时使用 `--mode existing --config /absolute/temp/config.json`；[配置字段和冲突规则](../references/onboarding.md)。目标根目录须已存在；计划目录必须是库外新目录。--approved只表示已取得用户对该具体方案的批准。
+命令在本 Skill 目录执行。配置必须填写知识库名称与根目录、平台、治理模式、原件保护开关、frontmatter 开关及并发模式；模板的空名称需要填写。校验拒绝缺项、错误类型、重复键和错误层级；不支持 YAML 合并键。扫描和链接检查仍只依赖 Python 标准库。
+
+直接告诉 Agent：
+
+```text
+请使用 acs-second-brain-manager 接管这个知识库。
+这是一个已有库，第一次先只读扫描，不要修改文件。
+```
+
+然后提供当前 Obsidian Vault 或知识库目录。
+
+第一次接管会先：
+
+```text
+确认知识库位置
+→ 只读扫描现有结构
+→ 识别目录、命名、链接、索引和治理规则
+→ 输出 Knowledge Base Understanding Report
+→ 你确认或纠正
+→ 再进入长期治理
+```
+
+## 新知识库
+
+直接告诉 Agent你主要想管理什么，例如：
+
+```text
+请使用 acs-second-brain-manager 帮我建立一个新的知识库。
+主要用于行业研究、人物机构资料和项目管理。
+先给最小结构方案，不要直接创建。
+```
+
+Skill 会先给方案，不默认复制开发者自己的目录结构。
+
+## 默认写入模式
+
+普通使用建议保持：
+
+```text
+confirm-first
+```
+
+也就是：
+
+```text
+先读源和查重
+→ 给 Mutation Plan
+→ 你确认一次
+→ 在批准范围内完成写入和关联更新
+```
+
+## 最常用的任务
+
+### 查询
+
+```text
+我以前怎么看加盟模式？
+```
+
+默认只读。
+
+### 入库
+
+```text
+把这份同行交流记录入库。
+```
+
+Agent 会在 `UPDATE / MERGE / CREATE / PENDING / SOURCE_ONLY` 中做判断。
+
+### 更新
+
+```text
+这个老师现在已经去了另一家机构，更新一下。
+```
+
+优先更新已有实体和关系，不机械新建“最新情况”页面。
+
+### 长期项目换新对话继续
+
+```text
+这是一个会跨多次对话推进的长期项目。请先检查是否已有项目页、任务台账或专项记忆；如无重复入口，请按专项记忆规范给出创建方案。
+```
+
+专项记忆的创建、更新和公开前脱敏方法见 [专项记忆使用说明](project-memory-guide.md)。
+
+### 冲突检查
+
+```text
+这条信息和我知识库里以前的记录有没有冲突？先不要写。
+```
+
+### 健康检查
+
+```text
+做一次知识库健康检查，只报告问题，不要自动修复。
+```
+
+## 记住 5 条就够了
+
+1. 第一次接管已有库默认只读。
+2. 查询不等于写入。
+3. 原始材料默认不改。
+4. 关键冲突不猜。
+5. 删除、批量移动和治理规则变化需要单独确认。
+
+## 接下来读什么
+
+- 想完整了解第一次怎么用：看 [新手入门](../../../docs/新手入门.md)
+- 想理解 Skill 全部能力：看 [README](../README.md)
+- 想看实际案例：看 [使用案例](examples.md)
+- 想理解术语：看 [概念解释](concepts.md)
+- 想让长期项目跨对话接续：看 [专项记忆使用说明](project-memory-guide.md)
+- 遇到使用问题：看 [常见问题](faq.md)
+- Agent / 开发者需要执行协议：看 [SKILL.md](../SKILL.md)

@@ -4,11 +4,12 @@
 
 这里不把所有能力塞进一个万能 Skill，而是按真实任务拆分：每个 Skill 都有自己的执行协议、用户说明、参考规范、脚本和最小测试，彼此职责尽量不重叠。
 
-目前正式维护两个 Skill：
+目前正式维护三个 Skill，其中知识库相关能力分为两个独立技能：
 
 | Skill | 解决什么问题 | 入口 |
 | --- | --- | --- |
-| `acs-second-brain-manager` | 一次性初始化或适配知识库治理，新库中文目录、已有库保留结构 | [查看 Skill](skill/acs-second-brain-manager/) |
+| `acs-knowledge-governance-bootstrap` | 一次性安装治理方案；新库中文目录、已有库保留结构 | [查看 Skill](skill/acs-knowledge-governance-bootstrap/) |
+| `acs-second-brain-manager` | 长期接管和治理本地 Markdown / Obsidian 第二大脑 | [查看 Skill](skill/acs-second-brain-manager/) |
 | `acs-video-script-extractor` | 本地音视频离线转写、双模型复核、字幕校对与还原文案整理 | [查看 Skill](skill/acs-video-script-extractor/) |
 
 如果你第一次使用，直接看：
@@ -19,7 +20,11 @@
 
 ## 第一次怎么选
 
-### 你要管理第二大脑
+### 你要给知识库安装治理方案
+
+使用 `acs-knowledge-governance-bootstrap`：先了解用途和现状，生成可审阅方案，确认后落地AGENTS、必要规范和工具。安装后可直接按库内规则工作。
+
+### 你要长期管理第二大脑
 
 直接告诉 Agent：
 
@@ -44,11 +49,38 @@
 
 ## 当前 Skills
 
+### `acs-knowledge-governance-bootstrap`
+
+知识库治理初始化与适配（v1.0）。新库默认中文目录；已有库保留路径、命名和资料，按需补齐AGENTS、规范、模板和独立检查工具。先审阅方案再安装，重复运行保护用户改动；不要求长期管理器作为依赖。
+
+详细说明：[初始化与适配 README](skill/acs-knowledge-governance-bootstrap/README.md)
+
+
 ### `acs-second-brain-manager`
 
-知识库治理初始化与适配 Skill（v2.0）。
+第二大脑管理与知识治理 Skill。
 
-先理解用途和现有结构，给出实际安装方案；确认后落地AGENTS、必要规范、模板和独立校验工具。新库默认中文目录，已有库沿用原结构。日常执行由库内规则承接，无需每次调用Skill。重复安装保护用户修改，不自动搬动资料，不创建写锁。
+适合：
+
+- 本地 Markdown 文件夹；
+- Obsidian Vault；
+- 同时包含 PDF、Word、图片、表格等原始资料的知识库；
+- 长期维护人物、机构、项目、研究、方法论和持续判断的个人或团队。
+
+核心能力：
+
+- 自适应理解已有知识库结构；
+- 查询历史知识与当前项目状态；
+- 新资料写入前查重、冲突检查和 Mutation Decision；
+- `UPDATE / MERGE / CREATE / PENDING / SOURCE_ONLY` 五种知识变更；
+- Source Layer / Knowledge Layer 分层；
+- 来源追踪与事实边界；
+- 人物、机构等实体关系维护；
+- 时效数据与历史快照；
+- 长期项目专项记忆与跨对话接手；
+- 知识库健康检查；
+- 高风险治理操作确认；
+- 多 Agent 场景下的写入边界。
 
 详细说明：[Skill README](skill/acs-second-brain-manager/README.md)
 
@@ -84,6 +116,7 @@ acskill/
 ├── docs/
 │   └── 新手入门.md
 └── skill/
+    ├── acs-knowledge-governance-bootstrap/  # 一次性安装与适配
     ├── acs-second-brain-manager/
     │   ├── README.md
     │   ├── SKILL.md
@@ -120,6 +153,7 @@ Skill 不需要为了形式强行拥有所有目录；只有确实需要模板�
 | 文档 | 给谁看 | 解决什么问题 |
 | --- | --- | --- |
 | [新手入门](docs/新手入门.md) | 第一次使用的人 | 先选哪个 Skill、第一句话怎么说 |
+| [治理初始化 README](skill/acs-knowledge-governance-bootstrap/README.md) | 初始化/适配用户 | 中文建库、既有库适配、规范与工具安装 |
 | [第二大脑 README](skill/acs-second-brain-manager/README.md) | 第二大脑用户 | 能力模型、治理边界与结构 |
 | [专项记忆使用说明](skill/acs-second-brain-manager/docs/project-memory-guide.md) | 长期项目用户 | 跨对话接手、维护、归档与公开前脱敏 |
 | [视频提取 README](skill/acs-video-script-extractor/README.md) | 视频转写用户 | 离线流程、环境要求与交付内容 |
