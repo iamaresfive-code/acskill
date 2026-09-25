@@ -8,7 +8,7 @@
 
 | Skill | 解决什么问题 | 入口 |
 | --- | --- | --- |
-| `acs-second-brain-manager` | 长期接管和治理本地 Markdown / Obsidian 第二大脑 | [查看 Skill](skill/acs-second-brain-manager/) |
+| `acs-second-brain-manager` | 一次性初始化或适配知识库治理，新库中文目录、已有库保留结构 | [查看 Skill](skill/acs-second-brain-manager/) |
 | `acs-video-script-extractor` | 本地音视频离线转写、双模型复核、字幕校对与还原文案整理 | [查看 Skill](skill/acs-video-script-extractor/) |
 
 如果你第一次使用，直接看：
@@ -46,29 +46,9 @@
 
 ### `acs-second-brain-manager`
 
-第二大脑管理与知识治理 Skill。
+知识库治理初始化与适配 Skill（v2.0）。
 
-适合：
-
-- 本地 Markdown 文件夹；
-- Obsidian Vault；
-- 同时包含 PDF、Word、图片、表格等原始资料的知识库；
-- 长期维护人物、机构、项目、研究、方法论和持续判断的个人或团队。
-
-核心能力：
-
-- 自适应理解已有知识库结构；
-- 查询历史知识与当前项目状态；
-- 新资料写入前查重、冲突检查和 Mutation Decision；
-- `UPDATE / MERGE / CREATE / PENDING / SOURCE_ONLY` 五种知识变更；
-- Source Layer / Knowledge Layer 分层；
-- 来源追踪与事实边界；
-- 人物、机构等实体关系维护；
-- 时效数据与历史快照；
-- 长期项目专项记忆与跨对话接手；
-- 知识库健康检查；
-- 高风险治理操作确认；
-- 多 Agent 场景下的写入边界。
+先理解用途和现有结构，给出实际安装方案；确认后落地AGENTS、必要规范、模板和独立校验工具。新库默认中文目录，已有库沿用原结构。日常执行由库内规则承接，无需每次调用Skill。重复安装保护用户修改，不自动搬动资料，不创建写锁。
 
 详细说明：[Skill README](skill/acs-second-brain-manager/README.md)
 
