@@ -75,7 +75,7 @@ def main():
     checked_rels={p.relative_to(root).as_posix() for p in checked}
     dup={k:[x for x in v if x in checked_rels] for k,v in by_stem.items()}
     dup={k:v for k,v in dup.items() if len(v)>1}
-    broken=[]; broken_md=[]; ambiguous=[]; outbound=Counter(); inbound=Counter(); no_fm=[]
+    resolved_links=[]; broken=[]; broken_md=[]; ambiguous=[]; outbound=Counter(); inbound=Counter(); no_fm=[]
     for p in checked:
         rel=p.relative_to(root).as_posix()
         try: text=p.read_text('utf-8',errors='replace')
@@ -93,11 +93,13 @@ def main():
                 found=list(dict.fromkeys(by_stem.get(norm(stem),[]) + by_name.get(norm(name),[])))
             outbound[rel]+=1
             if len(found)>1: ambiguous.append({'from':rel,'target':target,'candidates':found})
-            elif found: inbound[found[0]]+=1
+            elif found:
+                inbound[found[0]]+=1
+                resolved_links.append({'from':rel,'target':found[0]})
             else: (broken if wiki else broken_md).append({'from':rel,'target':target})
     orphans=[p.relative_to(root).as_posix() for p in checked if outbound[p.relative_to(root).as_posix()]==0 and inbound[p.relative_to(root).as_posix()]==0]
     result={'schema_version':'1.0','root':str(root),'markdown_pages':len(pages),'checked_markdown_pages':len(checked),
-            'critical':[], 'warnings':[], 'suggestions':[],
+            'critical':[], 'warnings':[], 'suggestions':[], 'resolved_links':resolved_links,
             'signals':{'duplicate_stems':dup,'broken_wikilinks':broken[:500],'broken_markdown_links':broken_md[:500],'ambiguous_links':ambiguous[:500],'orphan_pages':orphans[:500],'pages_without_frontmatter':no_fm[:500]},
             'notes':['Checks local wiki and inline Markdown file links; not heading anchors, reference-style links or remote URLs. Code examples are excluded. Semantic conflicts require agent review.', 'No source files were modified.']}
     if broken: result['warnings'].append(f'{len(broken)} broken wikilink(s) detected')

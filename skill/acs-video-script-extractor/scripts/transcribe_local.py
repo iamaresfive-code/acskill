@@ -123,11 +123,17 @@ def main() -> int:
     if len(set(models)) != len(models):
         raise SystemExit("模型名称不能重复；双模型复核需要不同模型。")
 
+    output_dir = args.output_dir.expanduser().resolve()
+    if output_dir.exists() and (any(output_dir.glob("raw-*")) or
+                                (output_dir / "run-manifest.json").exists() or
+                                (output_dir / "run-manifest.json").is_symlink()):
+        raise SystemExit("输出目录已有转写结果，请使用新的批次目录；不会覆盖原稿。")
+    slugs = [name.replace("/", "-") for name in models]
+    if len(set(slugs)) != len(slugs):
+        raise SystemExit("模型名称映射为相同文件名，请使用不同输出批次。")
     os.environ.setdefault("HF_HUB_OFFLINE", "1")
     ensure_runtime()
     from faster_whisper import WhisperModel
-
-    output_dir = args.output_dir.expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     source_hash = sha256(source)
     manifest_path = output_dir / "run-manifest.json"
@@ -147,7 +153,12 @@ def main() -> int:
         "results": [],
         "failures": [],
     }
-    write_manifest(manifest_path, manifest)
+    # Exclusive reservation rejects a concurrent run before either replaces evidence.
+    try:
+        with manifest_path.open("x", encoding="utf-8") as handle:
+            handle.write(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
+    except FileExistsError:
+        raise SystemExit("输出目录已有转写任务，请使用新的批次目录。")
 
     for model_name in models:
         started = time.monotonic()
@@ -204,15 +215,15 @@ def main() -> int:
         }
         json_path = output_dir / f"raw-{slug}.json"
         text_path = output_dir / f"raw-{slug}-timestamped.txt"
-        json_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        text_path.write_text(
-            "\n".join(
-                f"[{stamp(item['start'])} --> {stamp(item['end'])}] {item['text']}"
-                for item in segments
+        with json_path.open("x", encoding="utf-8") as handle:
+            handle.write(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
+        with text_path.open("x", encoding="utf-8") as handle:
+            handle.write(
+                "\n".join(
+                    f"[{stamp(item['start'])} --> {stamp(item['end'])}] {item['text']}"
+                    for item in segments
+                ) + "\n"
             )
-            + "\n",
-            encoding="utf-8",
-        )
         manifest["results"].append(
             {
                 "model": model_name,

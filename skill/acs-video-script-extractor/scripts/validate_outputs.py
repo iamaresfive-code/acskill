@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import hashlib
 import math
 from pathlib import Path
 import re
@@ -49,7 +50,7 @@ def finite_number(value: object) -> bool:
     return type(value) in (int, float) and math.isfinite(value)
 
 
-def validate_segments(path: Path, expected_hash: str | None, expected_model: str) -> tuple[list[str], list[str], float]:
+def validate_segments(path: Path, expected_hash: str | None, expected_model: str, media_duration: float = 0) -> tuple[list[str], list[str], float]:
     errors: list[str] = []
     warnings: list[str] = []
     data = load_json(path, errors)
@@ -61,6 +62,10 @@ def validate_segments(path: Path, expected_hash: str | None, expected_model: str
     segments = data.get("segments")
     if not isinstance(segments, list) or not segments:
         return errors + [f"{path.name} 没有有效 segments"], warnings, 0.0
+    duration = data.get("duration")
+    if not finite_number(duration) or duration <= 0:
+        errors.append(f"{path.name} duration 无效")
+        duration = 0.0
     previous_end = -1.0
     for index, segment in enumerate(segments, start=1):
         if not isinstance(segment, dict) or not all(
@@ -71,18 +76,69 @@ def validate_segments(path: Path, expected_hash: str | None, expected_model: str
         start, end = segment["start"], segment["end"]
         if start < 0 or end <= start:
             errors.append(f"{path.name} 第 {index} 段起止时间无效")
+        if duration and end > duration + 0.1 or media_duration and end > media_duration + 0.1:
+            errors.append(f"{path.name} 第 {index} 段时间戳超出媒体时长")
         if start + 0.05 < previous_end:
             warnings.append(f"{path.name} 第 {index} 段与上一段时间重叠")
         previous_end = max(previous_end, end)
         if not str(segment.get("text", "")).strip():
             warnings.append(f"{path.name} 第 {index} 段文本为空")
-    duration = data.get("duration")
-    if not finite_number(duration) or duration <= 0:
-        errors.append(f"{path.name} duration 无效")
-        duration = max(0.0, previous_end)
     if previous_end < max(0, duration - 15):
         warnings.append(f"{path.name} 末段距媒体结尾超过 15 秒，请确认是否为静音或漏段")
     return errors, warnings, duration
+
+
+def long_gaps(segments, duration, threshold=15.0):
+    """Head/internal/tail candidates; union intervals, never infer speech from gaps."""
+    intervals=[]
+    for item in segments:
+        if isinstance(item,dict) and all(finite_number(item.get(k)) for k in ("start","end")) and str(item.get("text", "")).strip():
+            intervals.append((max(0.0,item["start"]),min(duration,item["end"])))
+    cursor=0.0; gaps=[]
+    for start,end in sorted(intervals):
+        if start-cursor > threshold: gaps.append((round(cursor,3),round(start,3)))
+        cursor=max(cursor,end)
+    if duration-cursor > threshold: gaps.append((round(cursor,3),round(duration,3)))
+    return gaps
+
+
+def validate_coverage(root, raw_data, duration, source_hash, machine_only, errors, warnings):
+    if not duration or not raw_data: return
+    candidates=[]; combined=[]; input_hashes={}
+    for model,(path,data) in raw_data.items():
+        segments=data.get("segments",[])
+        if not isinstance(segments,list): continue
+        combined.extend(segments)
+        input_hashes[model]=hashlib.sha256(path.read_bytes()).hexdigest()
+        for start,end in long_gaps(segments,duration):
+            candidates.append((model,start,end))
+            warnings.append(f"长空缺候选｜{model}｜{start:.3f}–{end:.3f}秒；须核对声音/字幕")
+    for start,end in long_gaps(combined,duration):
+        warnings.append(f"双模型共同空缺候选｜{start:.3f}–{end:.3f}秒；一致不证明无对白")
+    if not candidates: return
+    reviewed=set()
+    review_path=root / "coverage-review.json"
+    if review_path.is_file():
+        review=load_json(review_path,errors)
+        if review is not None:
+            check_hash(review,"coverage-review.json",source_hash,errors)
+            if review.get("input_sha256")!=input_hashes:
+                errors.append("coverage-review.json 与当前模型原稿不一致")
+            entries=review.get("gaps")
+            if not isinstance(entries,list): errors.append("coverage-review.json gaps必须为列表")
+            else:
+                for entry in entries:
+                    if not isinstance(entry,dict) or not isinstance(entry.get("model"),str) or not all(finite_number(entry.get(k)) for k in ("start","end")):
+                        errors.append("coverage-review.json 空缺记录无效"); continue
+                    key=(entry["model"],entry["start"],entry["end"])
+                    if key not in candidates or key in reviewed:
+                        errors.append("coverage-review.json 存在重复或不匹配空缺"); continue
+                    if entry.get("status") not in ("silence","non-speech","corrected") or not all(isinstance(entry.get(k),str) and entry[k].strip() for k in ("reason","evidence")):
+                        errors.append("coverage-review.json 缺少复核结论或依据"); continue
+                    reviewed.add(key)
+    unresolved=set(candidates)-reviewed
+    if unresolved and not machine_only:
+        errors.append(f"存在{len(unresolved)}项未说明长空缺；完整交付前填写coverage-review.json并保留核验依据")
 
 
 def main() -> int:
@@ -101,6 +157,11 @@ def main() -> int:
     source_hash = check_hash(manifest, "run-manifest.json", None, errors)
     check_hash(probe, "source-probe.json", source_hash, errors)
 
+    probe_duration = probe.get("duration")
+    if not finite_number(probe_duration) or probe_duration <= 0:
+        errors.append("source-probe.json duration 无效")
+        probe_duration = 0.0
+    raw_data = {}
     results = manifest.get("results", [])
     if not isinstance(results, list):
         errors.append("run-manifest.json 的 results 格式错误")
@@ -145,20 +206,18 @@ def main() -> int:
             continue
         if not text_path.is_file() or text_path.stat().st_size == 0:
             errors.append(f"缺少或为空：{text_path.name}")
-        item_errors, item_warnings, duration = validate_segments(raw_path, source_hash, model)
+        item_errors, item_warnings, duration = validate_segments(raw_path, source_hash, model, probe_duration)
         errors.extend(item_errors)
         warnings.extend(item_warnings)
         durations.append(duration)
+        raw = load_json(raw_path, [])
+        if raw is not None: raw_data[model]=(raw_path,raw)
 
     if len(models) < 2:
         errors.append("必须有至少两个不同模型")
 
     if durations and max(durations) - min(durations) > 2:
         warnings.append("两个模型报告的媒体时长相差超过 2 秒")
-    probe_duration = probe.get("duration")
-    if not finite_number(probe_duration) or probe_duration <= 0:
-        errors.append("source-probe.json duration 无效")
-        probe_duration = 0.0
     if probe_duration and durations:
         for duration in durations:
             if abs(duration - probe_duration) > 3:
@@ -174,6 +233,8 @@ def main() -> int:
         review_duration = review.get("duration")
         if not finite_number(review_duration) or review_duration <= 0:
             errors.append("review-points.json duration 无效")
+        elif probe_duration and abs(review_duration-probe_duration)>0.1:
+            errors.append("review-points.json 时长与媒体时长不一致")
         points = review.get("points")
         if not isinstance(points, list):
             errors.append("review-points.json 的 points 格式错误")
@@ -187,6 +248,8 @@ def main() -> int:
                 )
                 if not valid_times or not 0 <= point["start"] <= point["frame_time"] <= point["end"]:
                     errors.append(f"第 {index} 个差异检查点时间戳无效")
+                elif probe_duration and point["end"] > probe_duration + 0.1:
+                    errors.append(f"第 {index} 个差异检查点超出媒体时长")
                 for key in ("id", "first_model", "second_model"):
                     if not isinstance(point.get(key), str) or not point[key].strip():
                         errors.append(f"第 {index} 个差异检查点缺少 {key}")
@@ -200,6 +263,8 @@ def main() -> int:
                 if not all(isinstance(point.get(key), str) for key in ("first_diff", "second_diff")):
                     errors.append(f"第 {index} 个差异检查点缺少差异文本")
 
+    if not errors:
+        validate_coverage(output_dir,raw_data,probe_duration,source_hash,args.machine_only,errors,warnings)
     if not args.machine_only:
         for name in FINAL_FILES:
             path = output_dir / name

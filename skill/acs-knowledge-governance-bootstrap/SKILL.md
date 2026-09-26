@@ -2,7 +2,7 @@
 name: acs-knowledge-governance-bootstrap
 description: 为本地Markdown或Obsidian知识库一次性初始化或适配治理体系，落地AGENTS.md、必要规范、模板和独立工具。新库使用中文目录，已有库保留原结构；仅初始化、接管配置或治理升级时使用，不接管日常查询与入库。
 metadata:
-  version: "1.0"
+  version: "1.1"
 ---
 
 # 知识库治理初始化与适配

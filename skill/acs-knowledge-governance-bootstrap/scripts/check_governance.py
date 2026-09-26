@@ -35,14 +35,8 @@ def main():
         index=root/c['full_index']
         if not index.is_file(): errors.append('missing full index')
         else:
-            text=links.prose(index.read_text()); counted=[]
-            by_stem={}
-            for rel in knowledge: by_stem.setdefault(Path(rel).stem,[]).append(rel)
-            for target,wiki in ([(x,True) for x in links.WIKI_RE.findall(text)]+
-                                [(x,False) for x in links.markdown_targets(text)]):
-                found=links.candidates(root,index,target,wiki)
-                if wiki and not found and '/' not in target: found=by_stem.get(target.removesuffix('.md'),[])
-                if found and len(found)==1 and found[0] in knowledge: counted.append(found[0])
+            counted=[link['target'] for link in report['resolved_links']
+                     if link['from']==c['full_index'] and link['target'] in knowledge]
             missing=sorted(set(knowledge)-set(counted))
             duplicates=sorted({x for x in counted if counted.count(x)>1})
             if missing: errors.append({'index_missing':missing})

@@ -111,6 +111,30 @@ class BootstrapTests(unittest.TestCase):
         p=subprocess.run([sys.executable,str(self.v/'Admin/Governance/工具/治理检查.py')],capture_output=True,text=True)
         self.assertEqual(p.returncode,0,p.stdout+p.stderr)
         self.assertFalse((self.v/'Admin/Governance/规范/多Agent协作规范.md').exists())
+    def test_agents_changed_during_render_rejected_and_retry_preserves_edit(self):
+        from unittest.mock import patch
+        (self.v/'Notes').mkdir(); agents=self.v/'AGENTS.md'; agents.write_text('# Original\n')
+        render=b.render
+        def race(root,mode,config):
+            result=render(root,mode,config)
+            agents.write_text('# Original\nNEW USER RULE\n')
+            return result
+        with patch.object(b,'render',race), self.assertRaisesRegex(ValueError,'input changed during planning'):
+            self.plan('existing',{'knowledge_roots':['Notes']})
+        self.assertIn('NEW USER RULE',agents.read_text())
+        self.assertFalse((self.v/'规范与工具').exists())
+        p=self.plan('existing',{'knowledge_roots':['Notes']},'retry')
+        b.apply(p,True); self.assertIn('NEW USER RULE',agents.read_text())
+    def test_encoded_index_uses_same_resolver_as_links(self):
+        from urllib.parse import quote
+        b.apply(self.plan(),True)
+        (self.v/'知识/中文笔记.md').write_text('# 中文笔记\n')
+        index=self.v/'索引/知识全量索引.md'
+        for link in [quote('中文笔记'), '中文笔记', '中文笔记.md']:
+            index.write_text('[['+link+']]\n')
+            p=self.run_tool('治理检查.py');self.assertEqual(p.returncode,0,p.stdout+p.stderr)
+        index.write_text('[['+quote('中文笔记')+']]\n[[中文笔记]]\n')
+        p=self.run_tool('治理检查.py');self.assertEqual(p.returncode,2);self.assertIn('index_duplicate',p.stdout)
     def test_apply_failure_restores_written_files(self):
         from unittest.mock import patch
         p=self.plan(); real=b.atomic; count=[0]

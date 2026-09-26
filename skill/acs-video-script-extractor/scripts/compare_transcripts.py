@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 from difflib import SequenceMatcher
 import json
+import math
 from pathlib import Path
 import re
 import statistics
@@ -172,6 +173,18 @@ def main() -> int:
     raw_points = build_raw_points(first_text, second_text, first_times, second_times)
     merged = merge_points(raw_points, max(0.0, args.merge_gap_seconds))
     context = max(0, args.context_chars)
+    duration = max(float(first.get("duration", 0)), float(second.get("duration", 0)))
+    if not math.isfinite(duration) or duration <= 0:
+        raise SystemExit("转写时长无效。")
+    probe_path = args.output_dir.expanduser() / "source-probe.json"
+    if probe_path.is_file():
+        probe = json.loads(probe_path.read_text(encoding="utf-8"))
+        if not isinstance(probe,dict) or probe.get("source_sha256") not in (first_hash,second_hash) or not probe.get("source_sha256"):
+            raise SystemExit("媒体预检与转写来源不一致。")
+        value = probe.get("duration")
+        if type(value) not in (int,float) or not math.isfinite(value) or value <= 0:
+            raise SystemExit("媒体预检时长无效。")
+        duration = value
     points = []
     for index, point in enumerate(merged, start=1):
         i1, i2 = point["first_start"], point["first_end"]
@@ -183,9 +196,9 @@ def main() -> int:
         points.append(
             {
                 "id": f"Q{index:03d}",
-                "start": round(point["start"], 3),
-                "end": round(point["end"], 3),
-                "frame_time": round(point["frame_time"], 3),
+                "start": round(min(duration,max(0,point["start"])), 3),
+                "end": round(min(duration,max(0,point["end"])), 3),
+                "frame_time": round(min(duration,max(0,point["frame_time"])), 3),
                 "risk_score": risk_score,
                 "priority": priority,
                 "first_model": first.get("model", args.first.stem),
@@ -198,7 +211,6 @@ def main() -> int:
             }
         )
 
-    duration = max(float(first.get("duration", 0)), float(second.get("duration", 0)))
     overall_similarity = SequenceMatcher(None, first_text, second_text, autojunk=False).ratio()
     output_dir = args.output_dir.expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)

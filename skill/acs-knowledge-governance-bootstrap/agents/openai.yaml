@@ -1,5 +1,5 @@
 interface:
-  display_name: "知识库治理初始化与适配 v1.0"
+  display_name: "知识库治理初始化与适配 v1.1"
   short_description: "按用户需要落地知识库治理：新库中文目录，已有库保留结构，安装规范和独立工具"
   default_prompt: "使用 $acs-knowledge-governance-bootstrap 为我的知识库生成治理安装方案；新库用中文目录，已有库沿用原结构，确认后落地AGENTS、必要规范与工具。"
 policy:

@@ -5,6 +5,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import hashlib
+import math
+import re
 import os
 from pathlib import Path
 import shutil
@@ -61,21 +64,47 @@ def main() -> int:
     if not review_path.is_file():
         raise SystemExit(f"差异文件不存在：{review_path}")
     data = json.loads(review_path.read_text(encoding="utf-8"))
-    points = data.get("points", data if isinstance(data, list) else [])
-    if not isinstance(points, list):
-        raise SystemExit("review-points.json 格式错误。")
+    if not isinstance(data, dict) or not isinstance(data.get("points"), list):
+        raise SystemExit("review-points.json 必须包含来源哈希和points列表。")
+    def file_hash(path):
+        h = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""): h.update(chunk)
+        return h.hexdigest()
+    expected = data.get("source_sha256")
+    if not isinstance(expected, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", expected):
+        raise SystemExit("差异文件缺少有效来源哈希，拒绝抽帧。")
+    if file_hash(video) != expected.lower():
+        raise SystemExit("视频与差异文件来源哈希不匹配，拒绝抽帧。")
+    media_duration = data.get("duration")
+    if type(media_duration) not in (int,float) or not math.isfinite(media_duration) or media_duration <= 0:
+        raise SystemExit("差异文件时长无效。")
+    points = data["points"]
+    ids = set()
+    for point in points:
+        if not isinstance(point, dict): raise SystemExit("检查点必须是object。")
+        point_id = point.get("id")
+        if not isinstance(point_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}",point_id):
+            raise SystemExit("检查点id不是安全标识，拒绝路径分隔符或绝对路径。")
+        if point_id in ids: raise SystemExit("检查点id重复。")
+        ids.add(point_id)
+        if not all(type(point.get(k)) in (int,float) and math.isfinite(point[k]) for k in ("start","end","frame_time")):
+            raise SystemExit("检查点时间戳无效。")
+        if not 0 <= point["start"] <= point["frame_time"] <= point["end"] <= media_duration + 0.1:
+            raise SystemExit("检查点时间戳超出媒体范围。")
+        if type(point.get("risk_score",1)) not in (int,float) or not math.isfinite(point.get("risk_score",1)):
+            raise SystemExit("检查点风险值无效。")
     offsets = [float(item.strip()) for item in args.offsets.split(",") if item.strip()]
-    if not offsets:
-        raise SystemExit("--offsets 至少需要一个数值。")
-
+    if not offsets or not all(math.isfinite(x) for x in offsets):
+        raise SystemExit("--offsets 必须为有限数值。")
     selected, strategy = select_points(points, args.max_points)
-    try:
-        media_duration = float(data.get("duration")) if isinstance(data, dict) and data.get("duration") is not None else None
-    except (TypeError, ValueError):
-        media_duration = None
-    output_dir = args.output_dir.expanduser().resolve()
+    requested_output = args.output_dir.expanduser().absolute()
+    if requested_output.is_symlink(): raise SystemExit("输出目录不能是符号链接。")
+    output_dir = requested_output.resolve()
+    if output_dir.exists() and (not output_dir.is_dir() or any(output_dir.iterdir())):
+        raise SystemExit("抽帧目录必须为空或不存在，不覆盖已有画面。")
+    ffmpeg = find_ffmpeg() if selected else None
     output_dir.mkdir(parents=True, exist_ok=True)
-    ffmpeg = find_ffmpeg()
     manifest = []
     for point in selected:
         point_id = str(point.get("id", f"Q{len(manifest) + 1:03d}"))
@@ -85,11 +114,13 @@ def main() -> int:
             if media_duration is not None and media_duration > 0:
                 timestamp = min(timestamp, max(0.0, media_duration - 0.05))
             target = output_dir / f"{point_id}-{index}-{timestamp:.2f}s.png"
+            if target.parent.resolve() != output_dir or target.exists() or target.is_symlink():
+                raise SystemExit("抽帧目标越界或已存在。")
             command = [
                 ffmpeg,
                 "-loglevel",
                 "error",
-                "-y",
+                "-n",
                 "-ss",
                 f"{timestamp:.3f}",
                 "-i",
@@ -109,16 +140,18 @@ def main() -> int:
                     "file": target.name,
                 }
             )
+    if file_hash(video) != expected.lower():
+        raise SystemExit("抽帧期间源视频变化，输出未验收。")
     payload = {
+        "source_sha256": expected.lower(),
         "video": str(video),
         "total_review_points": len(points),
         "selected_review_points": len(selected),
         "selection_strategy": strategy,
         "frames": manifest,
     }
-    (output_dir / "frames-manifest.json").write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
+    with (output_dir / "frames-manifest.json").open("x", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
     omitted = len(points) - len(selected)
     suffix = f"，另有 {omitted} 个低优先级检查点未抽帧" if omitted else ""
     print(f"已生成 {len(manifest)} 张复核画面：{output_dir}{suffix}")

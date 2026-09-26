@@ -11,7 +11,7 @@ import tempfile
 PACKAGE = Path(__file__).resolve().parents[1]
 START = '<!-- acs-governance:start -->'
 END = '<!-- acs-governance:end -->'
-VERSION = '1.0'
+VERSION = '1.1'
 
 
 def digest(data):
@@ -189,17 +189,25 @@ def plan(root, mode, custom, output):
     c = config_for(root,mode,custom)
     receipt_rel = c['governance_dir']+'/工具/治理安装记录.json'
     receipt_path = local(root,receipt_rel)
-    receipt = json.loads(receipt_path.read_text()) if receipt_path.exists() else {}
+    snapshot_paths = set(c['existing_rules']) | {'AGENTS.md', receipt_rel}
+    snapshots = {rel: read(local(root, rel)) for rel in snapshot_paths}
+    receipt_bytes = snapshots[receipt_rel]
+    receipt = json.loads(receipt_bytes) if receipt_bytes is not None else {}
     if mode=='new' and not receipt and any(p.name not in {'.obsidian','.DS_Store'} for p in root.iterdir()):
         raise ValueError('new mode requires empty vault; existing content must use existing mode')
     if receipt and receipt.get('config') != c: raise ValueError('configuration changed; review existing installation before migration')
     files = render(root,mode,c)
+    for rel, original in snapshots.items():
+        if read(local(root,rel)) != original:
+            raise ValueError('input changed during planning: '+rel)
     if len(files) != len(set(files)): raise ValueError('duplicate destination')
     output.mkdir(parents=True, exist_ok=False)
     (output/'before').mkdir(); (output/'after').mkdir()
     actions=[]; conflicts=[]; owned=dict(receipt.get('hashes',{}))
     for i,(rel,text) in enumerate(files.items()):
         path=local(root,rel); before=read(path); after=text.encode()
+        if rel in snapshots and before != snapshots[rel]:
+            raise ValueError('input changed during planning: '+rel)
         if rel == c['governance_dir']+'/规范/结构约定.md' and rel in c['existing_rules']:
             continue
         # Existing indexes and home pages are user-maintained after initialization.
@@ -222,7 +230,10 @@ def plan(root, mode, custom, output):
     if receipt_path.exists(): (output/'before/receipt.json').write_bytes(receipt_path.read_bytes())
     actions.append({'path':receipt_rel,'action':'update' if receipt else 'create',
                     'before':fingerprint(receipt_path),'after':digest(receipt_data.encode()),'payload':'after/receipt.json'})
-    dependencies={r:fingerprint(local(root,r)) for r in c['existing_rules']}
+    dependencies={r: None if snapshots[r] is None else digest(snapshots[r]) for r in c['existing_rules']}
+    for rel, original in snapshots.items():
+        if read(local(root,rel)) != original:
+            raise ValueError('input changed during planning: '+rel)
     data={'version':VERSION,'root':str(root),'mode':mode,'config':c,'actions':actions,
           'dependencies':dependencies,'conflicts':conflicts,
           'root_entries':sorted(p.name for p in root.iterdir())}
